@@ -210,7 +210,7 @@ def seed():
                 "location": "San Francisco Bay Area",
                 "remote_only": False,
                 "results_wanted": 25,
-                "interval_hours": 24,
+                "interval_hours": 12,
             },
             {
                 "name": "Creative Director - Video/Content",
@@ -219,7 +219,7 @@ def seed():
                 "location": "San Francisco Bay Area",
                 "remote_only": False,
                 "results_wanted": 25,
-                "interval_hours": 24,
+                "interval_hours": 12,
             },
             {
                 "name": "Video Producer - Remote",
@@ -228,7 +228,7 @@ def seed():
                 "location": "",
                 "remote_only": True,
                 "results_wanted": 25,
-                "interval_hours": 24,
+                "interval_hours": 12,
             },
             {
                 "name": "Production Lead - AI/Tech",
@@ -237,7 +237,34 @@ def seed():
                 "location": "San Francisco Bay Area",
                 "remote_only": False,
                 "results_wanted": 25,
-                "interval_hours": 48,
+                "interval_hours": 12,
+            },
+            {
+                "name": "Video Producer - Monterey County",
+                "search_terms": "video producer, senior video producer, video production manager",
+                "boards": "indeed,linkedin,glassdoor,zip_recruiter",
+                "location": "Monterey County, CA",
+                "remote_only": False,
+                "results_wanted": 25,
+                "interval_hours": 12,
+            },
+            {
+                "name": "Creative Director - Monterey County",
+                "search_terms": "creative director video, creative director content, head of video",
+                "boards": "indeed,linkedin,glassdoor,zip_recruiter",
+                "location": "Monterey County, CA",
+                "remote_only": False,
+                "results_wanted": 25,
+                "interval_hours": 12,
+            },
+            {
+                "name": "Production Lead - Monterey County",
+                "search_terms": "production lead, video director, content director, creative producer",
+                "boards": "indeed,linkedin,glassdoor,zip_recruiter",
+                "location": "Monterey County, CA",
+                "remote_only": False,
+                "results_wanted": 25,
+                "interval_hours": 12,
             },
         ]
 
