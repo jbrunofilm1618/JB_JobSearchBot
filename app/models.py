@@ -27,6 +27,22 @@ class UserProfile(db.Model):
 
     search_configs = db.relationship("SearchConfig", backref="user", lazy=True)
     example_jobs = db.relationship("ExampleJob", backref="user", lazy=True)
+    resume_variants = db.relationship("ResumeVariant", backref="user", lazy=True)
+
+
+class ResumeVariant(db.Model):
+    """Targeted resume versions for different job types."""
+
+    __tablename__ = "resume_variant"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user_profile.id"), nullable=False)
+    label = db.Column(db.String(200), nullable=False)  # e.g. "Narrative Producer"
+    target_roles = db.Column(db.Text, default="")  # comma-separated role keywords
+    resume_text = db.Column(db.Text, default="")
+    cover_letter_text = db.Column(db.Text, default="")  # sample cover letter if available
+    filename = db.Column(db.String(300), default="")
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class ExampleJob(db.Model):

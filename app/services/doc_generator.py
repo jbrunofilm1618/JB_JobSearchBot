@@ -9,8 +9,28 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from flask import current_app
 
 from app import db
-from app.models import Job, UserProfile, GeneratedDocument
+from app.models import Job, UserProfile, GeneratedDocument, ResumeVariant
 from app.services.ai_client import ask
+
+
+def _find_best_variant(job: Job, profile: UserProfile) -> ResumeVariant | None:
+    """Find the resume variant whose target_roles best match the job title/description."""
+    variants = ResumeVariant.query.filter_by(user_id=profile.id).all()
+    if not variants:
+        return None
+
+    job_text = f"{job.title} {job.description or ''}".lower()
+    best = None
+    best_score = 0
+
+    for v in variants:
+        keywords = [k.strip().lower() for k in v.target_roles.split(",") if k.strip()]
+        score = sum(1 for kw in keywords if kw in job_text)
+        if score > best_score:
+            best_score = score
+            best = v
+
+    return best if best_score > 0 else None
 
 
 def generate_resume(job: Job, profile: UserProfile) -> GeneratedDocument:
@@ -21,6 +41,17 @@ def generate_resume(job: Job, profile: UserProfile) -> GeneratedDocument:
         "and skills — do not fabricate anything. Emphasize the most relevant "
         "qualifications. Use strong action verbs and quantify achievements where possible."
     )
+
+    variant = _find_best_variant(job, profile)
+    variant_section = ""
+    base_resume = profile.resume_text if profile.resume_text else "No existing resume provided."
+
+    if variant and variant.resume_text:
+        variant_section = f"""
+## Targeted Resume Variant ({variant.label}):
+{variant.resume_text[:4000]}
+"""
+        base_resume = variant.resume_text
 
     prompt = f"""Create a tailored resume for this candidate targeting the job below.
 
@@ -34,7 +65,8 @@ def generate_resume(job: Job, profile: UserProfile) -> GeneratedDocument:
 - Summary: {profile.summary}
 
 ## Current Resume:
-{profile.resume_text if profile.resume_text else 'No existing resume provided.'}
+{base_resume}
+{variant_section}
 
 ## Target Job:
 - Title: {job.title}
@@ -88,6 +120,19 @@ def generate_cover_letter(job: Job, profile: UserProfile) -> GeneratedDocument:
         "Be professional but authentic. Do not fabricate experience."
     )
 
+    variant = _find_best_variant(job, profile)
+    base_resume = profile.resume_text if profile.resume_text else "No existing resume provided."
+    sample_cover_letter_section = ""
+
+    if variant:
+        if variant.resume_text:
+            base_resume = variant.resume_text
+        if variant.cover_letter_text:
+            sample_cover_letter_section = f"""
+## Reference Cover Letter (use as style/tone guide — adapt content to this specific role):
+{variant.cover_letter_text[:3000]}
+"""
+
     prompt = f"""Write a cover letter for this candidate targeting the job below.
 
 ## Candidate Information:
@@ -98,7 +143,8 @@ def generate_cover_letter(job: Job, profile: UserProfile) -> GeneratedDocument:
 - Summary: {profile.summary}
 
 ## Current Resume:
-{profile.resume_text if profile.resume_text else 'No existing resume provided.'}
+{base_resume}
+{sample_cover_letter_section}
 
 ## Target Job:
 - Title: {job.title}

@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from werkzeug.utils import secure_filename
 from flask import current_app
 from app import db
-from app.models import UserProfile, ExampleJob
+from app.models import UserProfile, ExampleJob, ResumeVariant
 
 profile_bp = Blueprint("profile", __name__)
 
@@ -14,13 +14,42 @@ def _allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def _extract_pdf_text(filepath: str) -> str:
+    """Extract text from a PDF file using pdfplumber."""
+    try:
+        import pdfplumber
+
+        text_parts = []
+        with pdfplumber.open(filepath) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+        return "\n\n".join(text_parts)
+    except Exception as e:
+        return f"[PDF text extraction failed: {e}]"
+
+
+def _extract_docx_text(filepath: str) -> str:
+    """Extract text from a DOCX file using python-docx."""
+    try:
+        from docx import Document as DocxDocument
+
+        doc = DocxDocument(filepath)
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    except Exception as e:
+        return f"[DOCX text extraction failed: {e}]"
+
+
 @profile_bp.route("/", methods=["GET"])
 def view():
     profile = UserProfile.query.first()
     examples = []
+    variants = []
     if profile:
         examples = ExampleJob.query.filter_by(user_id=profile.id).all()
-    return render_template("profile.html", profile=profile, examples=examples)
+        variants = ResumeVariant.query.filter_by(user_id=profile.id).all()
+    return render_template("profile.html", profile=profile, examples=examples, variants=variants)
 
 
 @profile_bp.route("/save", methods=["POST"])
@@ -54,9 +83,11 @@ def save():
         if filename.endswith(".txt") or filename.endswith(".md"):
             with open(filepath, "r", encoding="utf-8", errors="replace") as f:
                 profile.resume_text = f.read()
+        elif filename.endswith(".pdf"):
+            profile.resume_text = _extract_pdf_text(filepath)
+        elif filename.endswith(".docx"):
+            profile.resume_text = _extract_docx_text(filepath)
         else:
-            # For PDF/DOCX, store a note that file was uploaded
-            # Full parsing can be added later with python-docx or pdfplumber
             profile.resume_text = request.form.get("resume_text", "").strip()
 
     # Also accept pasted resume text
@@ -96,4 +127,66 @@ def delete_example_job(example_id):
     db.session.delete(example)
     db.session.commit()
     flash("Example job removed.", "info")
+    return redirect(url_for("profile.view"))
+
+
+def _extract_file_text(filepath: str, filename: str) -> str:
+    """Extract text from an uploaded file based on extension."""
+    if filename.endswith(".txt") or filename.endswith(".md"):
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    elif filename.endswith(".pdf"):
+        return _extract_pdf_text(filepath)
+    elif filename.endswith(".docx"):
+        return _extract_docx_text(filepath)
+    return ""
+
+
+@profile_bp.route("/variant/add", methods=["POST"])
+def add_variant():
+    profile = UserProfile.query.first()
+    if not profile:
+        flash("Please create your profile first.", "warning")
+        return redirect(url_for("profile.view"))
+
+    label = request.form.get("label", "").strip()
+    if not label:
+        flash("Variant label is required.", "warning")
+        return redirect(url_for("profile.view"))
+
+    variant = ResumeVariant(
+        user_id=profile.id,
+        label=label,
+        target_roles=request.form.get("target_roles", "").strip(),
+    )
+
+    # Handle resume file upload
+    resume_file = request.files.get("resume_file")
+    if resume_file and resume_file.filename and _allowed_file(resume_file.filename):
+        filename = secure_filename(resume_file.filename)
+        filepath = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
+        resume_file.save(filepath)
+        variant.filename = filename
+        variant.resume_text = _extract_file_text(filepath, filename)
+
+    # Handle cover letter file upload
+    cl_file = request.files.get("cover_letter_file")
+    if cl_file and cl_file.filename and _allowed_file(cl_file.filename):
+        cl_filename = secure_filename(cl_file.filename)
+        cl_filepath = os.path.join(current_app.config["UPLOAD_FOLDER"], cl_filename)
+        cl_file.save(cl_filepath)
+        variant.cover_letter_text = _extract_file_text(cl_filepath, cl_filename)
+
+    db.session.add(variant)
+    db.session.commit()
+    flash(f"Resume variant '{label}' added.", "success")
+    return redirect(url_for("profile.view"))
+
+
+@profile_bp.route("/variant/<int:variant_id>/delete", methods=["POST"])
+def delete_variant(variant_id):
+    variant = ResumeVariant.query.get_or_404(variant_id)
+    db.session.delete(variant)
+    db.session.commit()
+    flash("Resume variant removed.", "info")
     return redirect(url_for("profile.view"))

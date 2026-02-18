@@ -117,6 +117,58 @@
     </div>
 
     <div class="col-lg-4">
+        <h4>Resume Variants</h4>
+        <p class="text-muted">Targeted resumes for different role types. The best match is used when generating documents.</p>
+
+        {% if variants %}
+        {% for v in variants %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6>{{ v.label }}</h6>
+                <small class="text-muted">{{ v.target_roles[:80] }}...</small>
+                {% if v.filename %}
+                <br><small><i class="bi bi-file-earmark"></i> {{ v.filename }}</small>
+                {% endif %}
+                {% if v.cover_letter_text %}
+                <br><small class="text-success"><i class="bi bi-check-circle"></i> Has sample cover letter</small>
+                {% endif %}
+                <form action="{{ url_for('profile.delete_variant', variant_id=v.id) }}" method="post" class="mt-2">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <div class="card mb-4">
+            <div class="card-header"><h6 class="mb-0">Add Resume Variant</h6></div>
+            <div class="card-body">
+                <form action="{{ url_for('profile.add_variant') }}" method="post" enctype="multipart/form-data">
+                    <div class="mb-2">
+                        <input type="text" name="label" class="form-control form-control-sm"
+                               placeholder="Label (e.g. Narrative Producer)" required>
+                    </div>
+                    <div class="mb-2">
+                        <input type="text" name="target_roles" class="form-control form-control-sm"
+                               placeholder="Target roles (comma-separated keywords)">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label form-label-sm">Resume file</label>
+                        <input type="file" name="resume_file" class="form-control form-control-sm"
+                               accept=".txt,.pdf,.doc,.docx,.md">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label form-label-sm">Cover letter file (optional)</label>
+                        <input type="file" name="cover_letter_file" class="form-control form-control-sm"
+                               accept=".txt,.pdf,.doc,.docx,.md">
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">Add Variant</button>
+                </form>
+            </div>
+        </div>
+
+        <hr>
+
         <h4>Example Good-Fit Jobs</h4>
         <p class="text-muted">Add jobs you consider a good fit. The AI uses these as reference when evaluating new jobs.</p>
 
