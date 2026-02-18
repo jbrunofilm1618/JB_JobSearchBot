@@ -1,0 +1,12 @@
+flask==3.1.0
+flask-sqlalchemy==3.1.1
+flask-migrate==4.1.0
+python-jobspy==1.1.75
+anthropic==0.42.0
+python-docx==1.1.2
+apscheduler==3.10.4
+python-dotenv==1.0.1
+requests==2.32.3
+beautifulsoup4==4.12.3
+markdown==3.7
+gunicorn==23.0.0

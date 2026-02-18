@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Documents - Job Search Bot{% endblock %}
+{% block content %}
+<h2>Generated Documents</h2>
+<p class="text-muted">AI-tailored resumes and cover letters for your job applications.</p>
+
+{% if docs %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Type</th>
+                <th>Job</th>
+                <th>Company</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for doc in docs %}
+            <tr>
+                <td>
+                    <span class="badge bg-{{ 'primary' if doc.doc_type == 'resume' else 'secondary' }}">
+                        {{ 'Resume' if doc.doc_type == 'resume' else 'Cover Letter' }}
+                    </span>
+                </td>
+                <td>
+                    {% if doc.job %}
+                    <a href="{{ url_for('jobs.job_detail', job_id=doc.job.id) }}">{{ doc.job.title }}</a>
+                    {% else %}
+                    N/A
+                    {% endif %}
+                </td>
+                <td>{{ doc.job.company if doc.job else 'N/A' }}</td>
+                <td>{{ doc.created_at.strftime('%b %d, %Y %H:%M') }}</td>
+                <td>
+                    <a href="{{ url_for('documents.view_document', doc_id=doc.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                    {% if doc.filename %}
+                    <a href="{{ url_for('documents.download_document', doc_id=doc.id) }}" class="btn btn-sm btn-outline-success">
+                        <i class="bi bi-download"></i> DOCX
+                    </a>
+                    {% endif %}
+                    <form action="{{ url_for('documents.delete_document', doc_id=doc.id) }}" method="post" class="d-inline">
+                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+    <i class="bi bi-file-earmark-text display-1"></i>
+    <p class="mt-3">No documents generated yet. Go to a job and click "Generate Documents" to create tailored resumes and cover letters.</p>
+</div>
+{% endif %}
+{% endblock %}

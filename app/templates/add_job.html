@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Add Job - Job Search Bot{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <h2>Add Job Manually</h2>
+        <p class="text-muted">Paste a job you found on any board.</p>
+
+        <form action="{{ url_for('jobs.add_job') }}" method="post">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Job Title *</label>
+                            <input type="text" name="title" class="form-control" required
+                                   placeholder="e.g. Senior Software Engineer">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Company *</label>
+                            <input type="text" name="company" class="form-control" required
+                                   placeholder="e.g. Acme Corp">
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label">Job URL</label>
+                            <input type="url" name="url" class="form-control"
+                                   placeholder="https://...">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Location</label>
+                            <input type="text" name="location" class="form-control"
+                                   placeholder="e.g. San Francisco, CA">
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input type="checkbox" name="is_remote" class="form-check-input" id="is_remote">
+                                <label class="form-check-label" for="is_remote">Remote position</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Job Description</label>
+                            <textarea name="description" class="form-control" rows="12"
+                                      placeholder="Paste the full job description here..."></textarea>
+                            <div class="form-text">
+                                The more detail you include, the better the AI can evaluate fit and generate documents.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus-lg"></i> Add Job
+                    </button>
+                    <a href="{{ url_for('jobs.list_jobs') }}" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

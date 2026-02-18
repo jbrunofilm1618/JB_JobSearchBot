@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }} - Job Search Bot{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('jobs.list_jobs') }}">Jobs</a></li>
+        <li class="breadcrumb-item active">{{ job.title }}</li>
+    </ol>
+</nav>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h2>{{ job.title }}</h2>
+                <h5 class="text-muted">{{ job.company }}</h5>
+                <p class="text-muted">
+                    <i class="bi bi-geo-alt"></i> {{ job.location or 'Not specified' }}
+                    {% if job.is_remote %} <span class="badge bg-info">Remote</span>{% endif %}
+                    {% if job.salary_text %} &middot; <i class="bi bi-cash"></i> {{ job.salary_text }}{% endif %}
+                    {% if job.job_type %} &middot; {{ job.job_type }}{% endif %}
+                </p>
+            </div>
+            {% if job.url %}
+            <a href="{{ job.url }}" target="_blank" class="btn btn-outline-primary">
+                <i class="bi bi-box-arrow-up-right"></i> View Original
+            </a>
+            {% endif %}
+        </div>
+
+        <!-- Actions -->
+        <div class="d-flex gap-2 mb-4 flex-wrap">
+            <form action="{{ url_for('jobs.evaluate', job_id=job.id) }}" method="post">
+                <button class="btn btn-success btn-sm"><i class="bi bi-stars"></i> AI Evaluate</button>
+            </form>
+            <form action="{{ url_for('jobs.check_status', job_id=job.id) }}" method="post">
+                <button class="btn btn-secondary btn-sm"><i class="bi bi-check2-circle"></i> Check if Hiring</button>
+            </form>
+            <a href="{{ url_for('documents.generate', job_id=job.id) }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-file-earmark-plus"></i> Generate Documents
+            </a>
+        </div>
+
+        <!-- Fit Score -->
+        {% if job.fit_score is not none %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-stars"></i> AI Fit Score:
+                    <span class="badge bg-{{ 'success' if job.fit_score >= 70 else ('warning text-dark' if job.fit_score >= 40 else 'danger') }} fs-5">
+                        {{ job.fit_score }}/100
+                    </span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>{{ job.fit_reasoning }}</p>
+                {% if pros %}
+                <h6 class="text-success"><i class="bi bi-hand-thumbs-up"></i> Pros</h6>
+                <ul>
+                    {% for p in pros %}<li>{{ p }}</li>{% endfor %}
+                </ul>
+                {% endif %}
+                {% if cons %}
+                <h6 class="text-danger"><i class="bi bi-hand-thumbs-down"></i> Cons</h6>
+                <ul>
+                    {% for c in cons %}<li>{{ c }}</li>{% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Description -->
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Job Description</h5></div>
+            <div class="card-body">
+                {% if job.description %}
+                <div class="job-description">{{ job.description | replace('\n', '<br>') | safe }}</div>
+                {% else %}
+                <p class="text-muted">No description available.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Generated Documents -->
+        {% if job.generated_docs %}
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Generated Documents</h5></div>
+            <div class="card-body">
+                {% for doc in job.generated_docs %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span>
+                        <i class="bi bi-file-earmark-text"></i>
+                        {{ 'Resume' if doc.doc_type == 'resume' else 'Cover Letter' }}
+                        <small class="text-muted">— {{ doc.created_at.strftime('%b %d, %Y %H:%M') }}</small>
+                    </span>
+                    <div>
+                        <a href="{{ url_for('documents.view_document', doc_id=doc.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                        {% if doc.filename %}
+                        <a href="{{ url_for('documents.download_document', doc_id=doc.id) }}" class="btn btn-sm btn-outline-success">Download DOCX</a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Status -->
+        <div class="card mb-3">
+            <div class="card-header"><h6 class="mb-0">Status</h6></div>
+            <div class="card-body">
+                <form action="{{ url_for('jobs.update_status', job_id=job.id) }}" method="post">
+                    <select name="status" class="form-select mb-2" onchange="this.form.submit()">
+                        <option value="new" {{ 'selected' if job.status == 'new' }}>New</option>
+                        <option value="reviewed" {{ 'selected' if job.status == 'reviewed' }}>Reviewed</option>
+                        <option value="shortlisted" {{ 'selected' if job.status == 'shortlisted' }}>Shortlisted</option>
+                        <option value="applied" {{ 'selected' if job.status == 'applied' }}>Applied</option>
+                        <option value="rejected" {{ 'selected' if job.status == 'rejected' }}>Rejected</option>
+                        <option value="closed" {{ 'selected' if job.status == 'closed' }}>Closed</option>
+                    </select>
+                </form>
+
+                <div class="mt-2">
+                    <strong>Hiring Status:</strong>
+                    {% if job.is_still_hiring is none %}
+                        <span class="text-muted">Not checked</span>
+                    {% elif job.is_still_hiring %}
+                        <span class="text-success"><i class="bi bi-check-circle-fill"></i> Active</span>
+                    {% else %}
+                        <span class="text-danger"><i class="bi bi-x-circle-fill"></i> Closed</span>
+                    {% endif %}
+                    {% if job.last_status_check %}
+                    <br><small class="text-muted">Last checked: {{ job.last_status_check.strftime('%b %d, %H:%M') }}</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Details -->
+        <div class="card mb-3">
+            <div class="card-header"><h6 class="mb-0">Details</h6></div>
+            <div class="card-body small">
+                <p><strong>Source:</strong> {{ job.source or 'N/A' }}</p>
+                <p><strong>Found:</strong> {{ job.date_found.strftime('%b %d, %Y') if job.date_found else 'N/A' }}</p>
+                <p><strong>Posted:</strong> {{ job.date_posted.strftime('%b %d, %Y') if job.date_posted else 'N/A' }}</p>
+            </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="card mb-3">
+            <div class="card-header"><h6 class="mb-0">Notes</h6></div>
+            <div class="card-body">
+                <form action="{{ url_for('jobs.save_notes', job_id=job.id) }}" method="post">
+                    <textarea name="notes" class="form-control mb-2" rows="4"
+                              placeholder="Your notes about this job...">{{ job.notes or '' }}</textarea>
+                    <button class="btn btn-sm btn-outline-primary">Save Notes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

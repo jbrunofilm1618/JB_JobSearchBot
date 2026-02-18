@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Profile - Job Search Bot{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <h2>Your Profile</h2>
+        <p class="text-muted">This information is used to evaluate job fit and generate tailored documents.</p>
+
+        <form action="{{ url_for('profile.save') }}" method="post" enctype="multipart/form-data">
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0">Contact Information</h5></div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Full Name</label>
+                            <input type="text" name="name" class="form-control"
+                                   value="{{ profile.name if profile else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" class="form-control"
+                                   value="{{ profile.email if profile else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Phone</label>
+                            <input type="text" name="phone" class="form-control"
+                                   value="{{ profile.phone if profile else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Location</label>
+                            <input type="text" name="location" class="form-control"
+                                   value="{{ profile.location if profile else '' }}"
+                                   placeholder="e.g. New York, NY">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0">Professional Summary</h5></div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Summary / Objective</label>
+                        <textarea name="summary" class="form-control" rows="4"
+                                  placeholder="Brief summary of your professional background and goals...">{{ profile.summary if profile else '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Skills</label>
+                        <textarea name="skills" class="form-control" rows="3"
+                                  placeholder="Python, JavaScript, Project Management, Data Analysis, ...">{{ profile.skills if profile else '' }}</textarea>
+                        <div class="form-text">Comma-separated list of your skills.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Years of Experience</label>
+                        <input type="number" name="experience_years" class="form-control" style="max-width: 120px;"
+                               value="{{ profile.experience_years if profile else 0 }}" min="0">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0">Job Preferences</h5></div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Desired Job Titles</label>
+                            <textarea name="desired_titles" class="form-control" rows="2"
+                                      placeholder="Software Engineer, Backend Developer, ...">{{ profile.desired_titles if profile else '' }}</textarea>
+                            <div class="form-text">Comma-separated.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Desired Locations</label>
+                            <textarea name="desired_locations" class="form-control" rows="2"
+                                      placeholder="Remote, San Francisco, New York, ...">{{ profile.desired_locations if profile else '' }}</textarea>
+                            <div class="form-text">Comma-separated. Include "Remote" if applicable.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Minimum Salary ($)</label>
+                            <input type="number" name="min_salary" class="form-control"
+                                   value="{{ profile.min_salary if profile and profile.min_salary else '' }}"
+                                   placeholder="e.g. 80000">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header"><h5 class="mb-0">Resume</h5></div>
+                <div class="card-body">
+                    {% if profile and profile.resume_filename %}
+                    <div class="alert alert-success">
+                        <i class="bi bi-file-earmark-check"></i>
+                        Current file: <strong>{{ profile.resume_filename }}</strong>
+                    </div>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label">Upload Resume File</label>
+                        <input type="file" name="resume" class="form-control"
+                               accept=".txt,.pdf,.doc,.docx,.md">
+                        <div class="form-text">Accepted: .txt, .pdf, .doc, .docx, .md</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Or Paste Resume Text</label>
+                        <textarea name="resume_text" class="form-control" rows="10"
+                                  placeholder="Paste your full resume text here...">{{ profile.resume_text if profile else '' }}</textarea>
+                        <div class="form-text">
+                            Pasting the text directly gives the best results for AI evaluation and document generation.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg mb-4">
+                <i class="bi bi-check-lg"></i> Save Profile
+            </button>
+        </form>
+    </div>
+
+    <div class="col-lg-4">
+        <h4>Example Good-Fit Jobs</h4>
+        <p class="text-muted">Add jobs you consider a good fit. The AI uses these as reference when evaluating new jobs.</p>
+
+        {% if examples %}
+        {% for ex in examples %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6>{{ ex.title }}</h6>
+                <small class="text-muted">{{ ex.company }}</small>
+                {% if ex.url %}
+                <br><a href="{{ ex.url }}" target="_blank" class="small">View posting</a>
+                {% endif %}
+                {% if ex.why_good_fit %}
+                <p class="mt-2 mb-1 small"><strong>Why it fits:</strong> {{ ex.why_good_fit }}</p>
+                {% endif %}
+                <form action="{{ url_for('profile.delete_example_job', example_id=ex.id) }}" method="post" class="mt-2">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <div class="card">
+            <div class="card-header"><h6 class="mb-0">Add Example Job</h6></div>
+            <div class="card-body">
+                <form action="{{ url_for('profile.add_example_job') }}" method="post">
+                    <div class="mb-2">
+                        <input type="text" name="title" class="form-control form-control-sm"
+                               placeholder="Job Title" required>
+                    </div>
+                    <div class="mb-2">
+                        <input type="text" name="company" class="form-control form-control-sm"
+                               placeholder="Company">
+                    </div>
+                    <div class="mb-2">
+                        <input type="url" name="url" class="form-control form-control-sm"
+                               placeholder="Job URL (optional)">
+                    </div>
+                    <div class="mb-2">
+                        <textarea name="description" class="form-control form-control-sm" rows="3"
+                                  placeholder="Job description (optional)"></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <textarea name="why_good_fit" class="form-control form-control-sm" rows="2"
+                                  placeholder="Why is this a good fit for you?"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">Add Example</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

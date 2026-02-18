@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Jobs - Job Search Bot{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Jobs</h2>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('jobs.add_job') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg"></i> Add Job
+        </a>
+        <form action="{{ url_for('jobs.batch_evaluate_jobs') }}" method="post" class="d-inline">
+            <button class="btn btn-success btn-sm"><i class="bi bi-stars"></i> Evaluate All New</button>
+        </form>
+        <form action="{{ url_for('jobs.batch_check') }}" method="post" class="d-inline">
+            <button class="btn btn-secondary btn-sm"><i class="bi bi-check2-circle"></i> Check Statuses</button>
+        </form>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-center">
+            <div class="col-auto">
+                <label class="form-label mb-0 small">Status:</label>
+            </div>
+            <div class="col-auto">
+                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">All</option>
+                    <option value="new" {{ 'selected' if status_filter == 'new' }}>New</option>
+                    <option value="reviewed" {{ 'selected' if status_filter == 'reviewed' }}>Reviewed</option>
+                    <option value="shortlisted" {{ 'selected' if status_filter == 'shortlisted' }}>Shortlisted</option>
+                    <option value="applied" {{ 'selected' if status_filter == 'applied' }}>Applied</option>
+                    <option value="rejected" {{ 'selected' if status_filter == 'rejected' }}>Rejected</option>
+                    <option value="closed" {{ 'selected' if status_filter == 'closed' }}>Closed</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small">Sort:</label>
+            </div>
+            <div class="col-auto">
+                <select name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="date_found" {{ 'selected' if sort == 'date_found' }}>Date Found</option>
+                    <option value="fit_score" {{ 'selected' if sort == 'fit_score' }}>Fit Score</option>
+                    <option value="date_posted" {{ 'selected' if sort == 'date_posted' }}>Date Posted</option>
+                    <option value="company" {{ 'selected' if sort == 'company' }}>Company</option>
+                    <option value="title" {{ 'selected' if sort == 'title' }}>Title</option>
+                </select>
+            </div>
+            <input type="hidden" name="dir" value="{{ direction }}">
+        </form>
+    </div>
+</div>
+
+<!-- Job Table -->
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Title</th>
+                <th>Company</th>
+                <th>Location</th>
+                <th>Salary</th>
+                <th>Fit</th>
+                <th>Status</th>
+                <th>Hiring?</th>
+                <th>Source</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            <tr class="cursor-pointer" onclick="window.location='{{ url_for('jobs.job_detail', job_id=job.id) }}'">
+                <td>
+                    <strong>{{ job.title }}</strong>
+                    {% if job.is_remote %}<span class="badge bg-info">Remote</span>{% endif %}
+                </td>
+                <td>{{ job.company }}</td>
+                <td><small>{{ job.location }}</small></td>
+                <td><small>{{ job.salary_text or '—' }}</small></td>
+                <td>
+                    {% if job.fit_score is not none %}
+                    <span class="badge bg-{{ 'success' if job.fit_score >= 70 else ('warning text-dark' if job.fit_score >= 40 else 'danger') }}">
+                        {{ job.fit_score }}
+                    </span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="badge bg-{{
+                        'primary' if job.status == 'new' else
+                        ('info' if job.status == 'reviewed' else
+                        ('success' if job.status == 'shortlisted' else
+                        ('warning text-dark' if job.status == 'applied' else
+                        ('secondary' if job.status == 'rejected' else 'dark'))))
+                    }}">{{ job.status }}</span>
+                </td>
+                <td>
+                    {% if job.is_still_hiring is none %}
+                    <span class="text-muted">?</span>
+                    {% elif job.is_still_hiring %}
+                    <span class="text-success"><i class="bi bi-check-circle-fill"></i></span>
+                    {% else %}
+                    <span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>
+                    {% endif %}
+                </td>
+                <td><small>{{ job.source }}</small></td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" class="text-center text-muted py-4">
+                    No jobs yet. <a href="{{ url_for('jobs.add_job') }}">Add one manually</a> or
+                    <a href="{{ url_for('jobs.add_search') }}">create a search</a>.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+{% if pagination.pages > 1 %}
+<nav>
+    <ul class="pagination justify-content-center">
+        {% if pagination.has_prev %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ pagination.prev_num }}&status={{ status_filter }}&sort={{ sort }}&dir={{ direction }}">Previous</a>
+        </li>
+        {% endif %}
+        {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+            <li class="page-item {{ 'active' if p == pagination.page }}">
+                <a class="page-link" href="?page={{ p }}&status={{ status_filter }}&sort={{ sort }}&dir={{ direction }}">{{ p }}</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">...</span></li>
+            {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ pagination.next_num }}&status={{ status_filter }}&sort={{ sort }}&dir={{ direction }}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
