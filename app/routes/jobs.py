@@ -1,10 +1,20 @@
 import json
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+import threading
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from app import db
 from app.models import Job, UserProfile, SearchConfig
 from app.services.job_search import run_search, add_manual_job
 from app.services.evaluator import evaluate_job, batch_evaluate
 from app.services.status_checker import check_job_status, batch_check_status
+
+# Background evaluation state (shared across requests)
+_eval_state = {
+    "running": False,
+    "total": 0,
+    "completed": 0,
+    "current_job": "",
+    "errors": 0,
+}
 
 jobs_bp = Blueprint("jobs", __name__)
 
@@ -132,9 +142,58 @@ def batch_evaluate_jobs():
     if not profile:
         flash("Please create your profile first.", "warning")
         return redirect(url_for("profile.view"))
-    results = batch_evaluate(profile)
-    flash(f"Evaluated {len(results)} jobs.", "success")
-    return redirect(url_for("jobs.list_jobs", sort="fit_score"))
+
+    if _eval_state["running"]:
+        flash("Evaluation already in progress.", "info")
+        return redirect(url_for("jobs.eval_progress"))
+
+    unevaluated = Job.query.filter(
+        Job.fit_score.is_(None), Job.status == Job.STATUS_NEW
+    ).all()
+
+    if not unevaluated:
+        flash("No new jobs to evaluate.", "info")
+        return redirect(url_for("jobs.list_jobs"))
+
+    _eval_state["running"] = True
+    _eval_state["total"] = len(unevaluated)
+    _eval_state["completed"] = 0
+    _eval_state["current_job"] = ""
+    _eval_state["errors"] = 0
+
+    job_ids = [j.id for j in unevaluated]
+    profile_id = profile.id
+    app = current_app._get_current_object()
+
+    def _run_eval():
+        with app.app_context():
+            p = UserProfile.query.get(profile_id)
+            for jid in job_ids:
+                j = db.session.get(Job, jid)
+                if not j:
+                    _eval_state["completed"] += 1
+                    continue
+                _eval_state["current_job"] = f"{j.title} at {j.company}"
+                try:
+                    evaluate_job(j, p)
+                except Exception as e:
+                    _eval_state["errors"] += 1
+                    print(f"Eval error for job {jid}: {e}")
+                _eval_state["completed"] += 1
+            _eval_state["running"] = False
+
+    threading.Thread(target=_run_eval, daemon=True).start()
+    return redirect(url_for("jobs.eval_progress"))
+
+
+@jobs_bp.route("/batch-evaluate/progress")
+def eval_progress():
+    return render_template("eval_progress.html", state=_eval_state)
+
+
+@jobs_bp.route("/batch-evaluate/status")
+def eval_status():
+    return jsonify(_eval_state)
 
 
 @jobs_bp.route("/batch-check-status", methods=["POST"])

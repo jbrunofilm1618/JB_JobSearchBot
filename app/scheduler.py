@@ -40,7 +40,11 @@ def _run_due_searches():
             if config.last_run is None:
                 is_due = True
             else:
-                next_run = config.last_run + timedelta(hours=config.interval_hours)
+                last_run = config.last_run
+                # Ensure both datetimes are timezone-aware for comparison
+                if last_run.tzinfo is None:
+                    last_run = last_run.replace(tzinfo=timezone.utc)
+                next_run = last_run + timedelta(hours=config.interval_hours)
                 is_due = now >= next_run
 
             if is_due:
