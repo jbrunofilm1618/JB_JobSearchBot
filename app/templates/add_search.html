@@ -36,10 +36,14 @@
                                 <label class="form-check-label" for="board_glassdoor">Glassdoor</label>
                             </div>
                             <div class="form-check">
-                                <input type="checkbox" class="form-check-input board-check" value="zip_recruiter" id="board_zip">
+                                <input type="checkbox" class="form-check-input board-check" value="zip_recruiter" id="board_zip" checked>
                                 <label class="form-check-label" for="board_zip">ZipRecruiter</label>
                             </div>
-                            <input type="hidden" name="boards" id="boards_hidden" value="indeed,linkedin,glassdoor">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input board-check" value="google" id="board_google" checked>
+                                <label class="form-check-label" for="board_google">Google Jobs</label>
+                            </div>
+                            <input type="hidden" name="boards" id="boards_hidden" value="indeed,linkedin,glassdoor,zip_recruiter,google">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Location</label>

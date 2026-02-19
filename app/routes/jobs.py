@@ -179,6 +179,30 @@ def add_search():
     return render_template("add_search.html")
 
 
+@jobs_bp.route("/searches/run-all", methods=["POST"])
+def run_all_searches():
+    configs = SearchConfig.query.filter_by(is_active=True).all()
+    if not configs:
+        flash("No active search configurations. Create one first.", "warning")
+        return redirect(url_for("jobs.search_list"))
+
+    total_new = 0
+    errors = 0
+    for config in configs:
+        try:
+            new_jobs = run_search(config)
+            total_new += len(new_jobs)
+        except Exception as e:
+            print(f"Error running search '{config.name}': {e}")
+            errors += 1
+
+    msg = f"Global search complete — found {total_new} new jobs across {len(configs)} searches."
+    if errors:
+        msg += f" ({errors} searches had errors.)"
+    flash(msg, "success")
+    return redirect(url_for("jobs.list_jobs", sort="date_found"))
+
+
 @jobs_bp.route("/searches/<int:config_id>/run", methods=["POST"])
 def run_search_now(config_id):
     config = SearchConfig.query.get_or_404(config_id)

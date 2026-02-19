@@ -58,6 +58,13 @@
             <a href="{{ url_for('jobs.add_search') }}" class="btn btn-outline-primary">
                 <i class="bi bi-search"></i> New Search
             </a>
+            {% if active_searches > 0 %}
+            <form action="{{ url_for('jobs.run_all_searches') }}" method="post" class="d-inline">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-play-fill"></i> Search All Now
+                </button>
+            </form>
+            {% endif %}
             {% if new_jobs > 0 %}
             <form action="{{ url_for('jobs.batch_evaluate_jobs') }}" method="post" class="d-inline">
                 <button type="submit" class="btn btn-outline-success">

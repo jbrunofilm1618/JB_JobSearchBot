@@ -11,6 +11,7 @@ BOARD_MAP = {
     "linkedin": "linkedin",
     "glassdoor": "glassdoor",
     "zip_recruiter": "zip_recruiter",
+    "google": "google",
 }
 
 
