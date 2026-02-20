@@ -21,11 +21,18 @@
                     {% if job.job_type %} &middot; {{ job.job_type }}{% endif %}
                 </p>
             </div>
-            {% if job.url %}
-            <a href="{{ job.url }}" target="_blank" class="btn btn-outline-primary">
-                <i class="bi bi-box-arrow-up-right"></i> View Original
-            </a>
-            {% endif %}
+            <div class="d-flex gap-2">
+                {% if job.company_url %}
+                <a href="{{ job.company_url }}" target="_blank" class="btn btn-success">
+                    <i class="bi bi-building"></i> Company Listing
+                </a>
+                {% endif %}
+                {% if job.url %}
+                <a href="{{ job.url }}" target="_blank" class="btn btn-outline-primary">
+                    <i class="bi bi-box-arrow-up-right"></i> View on {{ job.source | capitalize if job.source else 'Board' }}
+                </a>
+                {% endif %}
+            </div>
         </div>
 
         <!-- Actions -->
@@ -39,6 +46,12 @@
             <a href="{{ url_for('documents.generate', job_id=job.id) }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-file-earmark-plus"></i> Generate Documents
             </a>
+            {% if job.company %}
+            <a href="https://www.google.com/search?q={{ (job.company ~ ' ' ~ job.title ~ ' careers apply') | urlencode }}"
+               target="_blank" class="btn btn-outline-info btn-sm">
+                <i class="bi bi-building"></i> Search Company Site
+            </a>
+            {% endif %}
         </div>
 
         <!-- Fit Score -->
@@ -123,6 +136,13 @@
                     </select>
                 </form>
 
+                {% if job.status == 'applied' and job.date_applied %}
+                <div class="mt-2">
+                    <strong>Applied:</strong> {{ job.date_applied.strftime('%b %d, %Y') }}
+                    <br><small class="text-muted">{{ ((now_utc - job.date_applied).days if now_utc else '') }} days ago</small>
+                </div>
+                {% endif %}
+
                 <div class="mt-2">
                     <strong>Hiring Status:</strong>
                     {% if job.is_still_hiring is none %}
@@ -136,6 +156,27 @@
                     <br><small class="text-muted">Last checked: {{ job.last_status_check.strftime('%b %d, %H:%M') }}</small>
                     {% endif %}
                 </div>
+            </div>
+        </div>
+
+        <!-- Company URL -->
+        <div class="card mb-3">
+            <div class="card-header"><h6 class="mb-0"><i class="bi bi-building"></i> Company Listing URL</h6></div>
+            <div class="card-body">
+                <form action="{{ url_for('jobs.save_company_url', job_id=job.id) }}" method="post">
+                    <input type="url" name="company_url" class="form-control form-control-sm mb-2"
+                           placeholder="Paste direct link to company careers page..."
+                           value="{{ job.company_url or '' }}">
+                    <button class="btn btn-sm btn-outline-primary">Save Company URL</button>
+                </form>
+                {% if job.company %}
+                <div class="mt-2">
+                    <a href="https://www.google.com/search?q={{ (job.company ~ ' ' ~ job.title ~ ' careers apply') | urlencode }}"
+                       target="_blank" class="btn btn-sm btn-outline-info w-100">
+                        <i class="bi bi-search"></i> Find on Company Site
+                    </a>
+                </div>
+                {% endif %}
             </div>
         </div>
 

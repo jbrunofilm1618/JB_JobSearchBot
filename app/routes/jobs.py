@@ -1,5 +1,6 @@
 import json
 import threading
+from datetime import datetime, timezone
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from app import db
 from app.models import Job, UserProfile, SearchConfig
@@ -64,7 +65,7 @@ def job_detail(job_id):
     job = Job.query.get_or_404(job_id)
     pros = json.loads(job.fit_pros) if job.fit_pros else []
     cons = json.loads(job.fit_cons) if job.fit_cons else []
-    return render_template("job_detail.html", job=job, pros=pros, cons=cons)
+    return render_template("job_detail.html", job=job, pros=pros, cons=cons, now_utc=datetime.now(timezone.utc))
 
 
 @jobs_bp.route("/<int:job_id>/evaluate", methods=["POST"])
@@ -106,6 +107,8 @@ def update_status(job_id):
         Job.STATUS_CLOSED,
     ):
         job.status = new_status
+        if new_status == Job.STATUS_APPLIED and not job.date_applied:
+            job.date_applied = datetime.now(timezone.utc)
         db.session.commit()
         flash(f"Status updated to '{new_status}'.", "info")
     return redirect(url_for("jobs.job_detail", job_id=job.id))
@@ -117,6 +120,15 @@ def save_notes(job_id):
     job.notes = request.form.get("notes", "")
     db.session.commit()
     flash("Notes saved.", "info")
+    return redirect(url_for("jobs.job_detail", job_id=job.id))
+
+
+@jobs_bp.route("/<int:job_id>/company-url", methods=["POST"])
+def save_company_url(job_id):
+    job = Job.query.get_or_404(job_id)
+    job.company_url = request.form.get("company_url", "").strip()
+    db.session.commit()
+    flash("Company URL saved.", "info")
     return redirect(url_for("jobs.job_detail", job_id=job.id))
 
 

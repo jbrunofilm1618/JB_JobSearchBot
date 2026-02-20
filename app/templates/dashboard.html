@@ -83,6 +83,77 @@
     </div>
 </div>
 
+<!-- Applications Tracker -->
+{% if applied_tracking %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-send-check"></i> Applications Tracker</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Job</th>
+                                <th>Company</th>
+                                <th>Applied</th>
+                                <th>Days Ago</th>
+                                <th>Follow Up</th>
+                                <th>Fit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in applied_tracking %}
+                            <tr class="{{ 'table-danger' if item.needs_followup else '' }}"
+                                style="cursor:pointer"
+                                onclick="window.location='{{ url_for('jobs.job_detail', job_id=item.job.id) }}'">
+                                <td><strong>{{ item.job.title }}</strong></td>
+                                <td>{{ item.job.company }}</td>
+                                <td>
+                                    {% if item.job.date_applied %}
+                                    <small>{{ item.job.date_applied.strftime('%b %d, %Y') }}</small>
+                                    {% else %}
+                                    <small class="text-muted">Not recorded</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.days_since is not none %}
+                                    {{ item.days_since }} day{{ 's' if item.days_since != 1 else '' }}
+                                    {% else %}
+                                    <span class="text-muted">--</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.needs_followup %}
+                                    <span class="badge bg-danger">
+                                        <i class="bi bi-exclamation-triangle-fill"></i> Follow Up Now!
+                                    </span>
+                                    {% elif item.days_until_followup is not none %}
+                                    <small class="text-muted">in {{ item.days_until_followup }} day{{ 's' if item.days_until_followup != 1 else '' }}</small>
+                                    {% else %}
+                                    <span class="text-muted">--</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.job.fit_score is not none %}
+                                    <span class="badge bg-{{ 'success' if item.job.fit_score >= 70 else ('warning text-dark' if item.job.fit_score >= 40 else 'danger') }}">
+                                        {{ item.job.fit_score }}
+                                    </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row">
     <div class="col-md-6">
         <div class="card">

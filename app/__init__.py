@@ -29,5 +29,22 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        _add_missing_columns(app)
 
     return app
+
+
+def _add_missing_columns(app):
+    """Add columns that may be missing from an older database."""
+    new_columns = [
+        ("job", "date_applied", "DATETIME"),
+        ("job", "company_url", "VARCHAR(500) DEFAULT ''"),
+    ]
+    with db.engine.connect() as conn:
+        for table, column, col_type in new_columns:
+            try:
+                conn.execute(db.text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                conn.commit()
+            except Exception:
+                # Column already exists
+                pass

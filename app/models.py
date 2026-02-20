@@ -69,7 +69,7 @@ class SearchConfig(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user_profile.id"), nullable=False)
     name = db.Column(db.String(200), nullable=False)
     search_terms = db.Column(db.Text, nullable=False)  # comma-separated keywords
-    boards = db.Column(db.Text, default="indeed,linkedin,glassdoor,zip_recruiter")
+    boards = db.Column(db.Text, default="indeed,linkedin,glassdoor,zip_recruiter,google")
     location = db.Column(db.String(200), default="")
     remote_only = db.Column(db.Boolean, default=False)
     results_wanted = db.Column(db.Integer, default=25)
@@ -115,6 +115,10 @@ class Job(db.Model):
     fit_reasoning = db.Column(db.Text, default="")
     fit_pros = db.Column(db.Text, default="")
     fit_cons = db.Column(db.Text, default="")
+
+    # Application tracking
+    date_applied = db.Column(db.DateTime, nullable=True)
+    company_url = db.Column(db.String(500), default="")  # direct link to company careers page
 
     # User notes
     notes = db.Column(db.Text, default="")
