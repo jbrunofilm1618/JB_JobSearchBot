@@ -112,6 +112,41 @@ IA_COLLECTIONS = ["prelinger", "FedFlix"]
 IA_ALWAYS_INCLUDE_TITLES = ["Power and the Land"]  # 1940, Joris Ivens, REA
 
 # --------------------------------------------------------------------------- #
+# Additional sources. Each is a Fetcher registered in
+# grid_archive.search.build_fetchers(). Flip any OFF here to skip it.
+#
+# API keys are read from the ENVIRONMENT, never stored in this file — put them in
+# your shell or a local .env (auto-loaded). The env var name is noted per source.
+# --------------------------------------------------------------------------- #
+
+# National Archives (NARA) Catalog API — US-government public-domain film & photos
+# (TVA, REA, WPA). Digital objects ARE the hi-res masters.
+NARA_ENABLED = True
+NARA_API_BASE = "https://catalog.archives.gov/api/v2"
+NARA_API_KEY_ENV = "NARA_API_KEY"   # free from api.data.gov; some deployments of the
+                                    # v2 API require it. Runs anonymously if unset; if
+                                    # requests come back 403, set this and rerun.
+
+# Wikimedia Commons — freely-licensed historical photos + some film, full-res
+# originals, explicit license per file. No key needed.
+WIKIMEDIA_ENABLED = True
+WIKIMEDIA_API = "https://commons.wikimedia.org/w/api.php"
+
+# Digital Public Library of America — one API over 4000+ US repositories.
+# REQUIRES a free key (request: https://pro.dp.la/developers/policies#get-a-key).
+# Without the key this source is skipped (with a warning), not an error.
+# Note: DPLA returns metadata + a thumbnail + a link to the holding institution;
+# hi-res masters live at that institution, so DPLA rows are leads to chase, and
+# `fetch-masters` cannot pull their originals directly.
+DPLA_ENABLED = True
+DPLA_API_BASE = "https://api.dp.la/v2"
+DPLA_API_KEY_ENV = "DPLA_API_KEY"
+
+# Only keep freely-reusable Wikimedia files (public-domain / CC). When True, files
+# whose license doesn't look free are skipped. The license is always recorded.
+WIKIMEDIA_FREE_ONLY = True
+
+# --------------------------------------------------------------------------- #
 # Output / working directories (relative to the current working directory).
 # --------------------------------------------------------------------------- #
 OUTPUT_DIR = "."

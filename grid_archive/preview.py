@@ -15,11 +15,10 @@ from typing import Dict, List, Optional
 import config
 from .cache import safe_filename
 from .fetchers.base import Fetcher
-from .fetchers.internet_archive import InternetArchiveFetcher
-from .fetchers.loc import LocFetcher
 from .http import HttpClient
 from .logging_setup import get_logger
 from .models import Item
+from .search import fetcher_map
 from . import manifest
 
 log = get_logger()
@@ -73,10 +72,7 @@ class Previewer:
     def __init__(self, max_clip_mb: int, use_cache: bool = True):
         self.client = HttpClient()
         self.max_clip_bytes = int(max_clip_mb * 1024 * 1024)
-        self.fetchers: Dict[str, Fetcher] = {
-            "LOC": LocFetcher(self.client, use_cache=use_cache),
-            "IA": InternetArchiveFetcher(self.client, use_cache=use_cache),
-        }
+        self.fetchers: Dict[str, Fetcher] = fetcher_map(self.client, use_cache)
         self.have_ffmpeg = _ffmpeg_available()
         if not self.have_ffmpeg:
             log.warning("ffmpeg/ffprobe not found on PATH: clips download but "

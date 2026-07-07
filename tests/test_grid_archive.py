@@ -11,9 +11,16 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
+
+# Redirect all cache writes into a throwaway dir so tests never touch ./cache.
+config.CACHE_DIR = tempfile.mkdtemp(prefix="gas_cache_")
+
 from grid_archive.models import Item, MANIFEST_COLUMNS
 from grid_archive.fetchers.loc import LocFetcher, _iter_urls, _slug_from_url, _as_text
 from grid_archive.fetchers.internet_archive import InternetArchiveFetcher, _parse_length
+from grid_archive.fetchers.wikimedia import WikimediaFetcher
+from grid_archive.fetchers.dpla import DplaFetcher
+from grid_archive.fetchers.nara import NaraFetcher
 from grid_archive import manifest, sheet
 from grid_archive.cli import load_dotenv
 
@@ -24,6 +31,7 @@ class FakeClient:
     def __init__(self, payloads):
         self._payloads = list(payloads)
         self.calls = []
+        self.session = type("S", (), {"headers": {}})()  # mimic requests.Session.headers
 
     def get_json(self, url, params=None):
         self.calls.append((url, params))
@@ -233,6 +241,195 @@ def test_dotenv_loads_but_never_overrides_real_env():
         finally:
             os.environ.pop("GRID_TEST_NEW", None)
             os.environ.pop("GRID_TEST_EXISTING", None)
+
+
+# --------------------------------------------------------------------------- #
+# Wikimedia Commons
+# --------------------------------------------------------------------------- #
+
+WIKIMEDIA_PHOTO = {
+    "query": {"pages": {"123": {
+        "pageid": 123,
+        "title": "File:REA lineman 1938.jpg",
+        "imageinfo": [{
+            "url": "https://upload.wikimedia.org/rea_lineman.jpg",
+            "thumburl": "https://upload.wikimedia.org/thumb/rea_lineman.jpg",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:REA_lineman_1938.jpg",
+            "mime": "image/jpeg", "mediatype": "BITMAP",
+            "extmetadata": {
+                "DateTimeOriginal": {"value": "1938"},
+                "Artist": {"value": "<a href='#'>Russell Lee</a>"},
+                "LicenseShortName": {"value": "Public domain"},
+                "LicenseUrl": {"value": "https://creativecommons.org/publicdomain/mark/1.0/"},
+            },
+        }],
+    }}}
+}
+
+
+def test_wikimedia_parses_photo_strips_tags_and_carries_license():
+    f = WikimediaFetcher(FakeClient([WIKIMEDIA_PHOTO]), use_cache=False)
+    items = list(f.search("rural electrification", "photo", "rural"))
+    assert len(items) == 1
+    it = items[0]
+    assert it.item_id == "wc:123" and it.source == "WIKIMEDIA" and it.format == "photo"
+    assert it.creator == "Russell Lee"                       # HTML tags stripped
+    assert "Public domain" in it.rights and "publicdomain" in it.rights
+    assert it.master_url == "https://upload.wikimedia.org/rea_lineman.jpg"
+    assert it.best_download_url.endswith("thumb/rea_lineman.jpg")
+
+
+def test_wikimedia_filters_out_of_era_and_wrong_mediatype():
+    old = dict(WIKIMEDIA_PHOTO)
+    payload = {"query": {"pages": {"9": {
+        "pageid": 9, "title": "File:x.jpg",
+        "imageinfo": [{"url": "u", "mediatype": "BITMAP",
+                       "extmetadata": {"DateTimeOriginal": {"value": "1912"},
+                                       "LicenseShortName": {"value": "Public domain"}}}]}}}}
+    f = WikimediaFetcher(FakeClient([payload]), use_cache=False)
+    assert list(f.search("q", "photo", "rural")) == []       # 1912 out of 1930-1959
+    # A VIDEO file requested as a photo is skipped.
+    vid = {"query": {"pages": {"7": {"pageid": 7, "title": "File:v.webm",
+           "imageinfo": [{"url": "v.webm", "mediatype": "VIDEO",
+                          "extmetadata": {"DateTimeOriginal": {"value": "1940"},
+                                          "LicenseShortName": {"value": "Public domain"}}}]}}}}
+    f2 = WikimediaFetcher(FakeClient([vid]), use_cache=False)
+    assert list(f2.search("q", "photo", "rural")) == []
+
+
+def test_wikimedia_free_only_skips_nonfree():
+    nonfree = {"query": {"pages": {"5": {"pageid": 5, "title": "File:nf.jpg",
+        "imageinfo": [{"url": "u", "mediatype": "BITMAP",
+                       "extmetadata": {"DateTimeOriginal": {"value": "1940"},
+                                       "LicenseShortName": {"value": "Fair use"}}}]}}}}
+    f = WikimediaFetcher(FakeClient([nonfree]), use_cache=False)
+    assert list(f.search("q", "photo", "rural")) == []
+
+
+def test_wikimedia_film_stream_is_original():
+    f = WikimediaFetcher(FakeClient([]), use_cache=False)
+    it = Item(item_id="wc:1", source="WIKIMEDIA", format="film", group="rural",
+              master_url="https://upload.wikimedia.org/movie.webm")
+    assert f.resolve_stream(it) == "https://upload.wikimedia.org/movie.webm"
+
+
+# --------------------------------------------------------------------------- #
+# DPLA
+# --------------------------------------------------------------------------- #
+
+DPLA_PAGE = {
+    "count": 1,
+    "docs": [{
+        "id": "abc123",
+        "sourceResource": {
+            "title": "TVA switchyard",
+            "date": {"displayDate": "1942", "begin": "1942"},
+            "creator": "Tennessee Valley Authority",
+            "type": "moving image",
+            "rights": "No known copyright restrictions",
+        },
+        "object": "https://thumb.dp.la/abc123.jpg",
+        "isShownAt": "https://provider.org/item/abc123",
+        "dataProvider": "TVA Archive",
+    }],
+}
+
+
+def test_dpla_parses_film_lead():
+    f = DplaFetcher(FakeClient([DPLA_PAGE]), api_key="k", use_cache=False)
+    items = list(f.search("TVA", "film", "big_machine"))
+    assert len(items) == 1
+    it = items[0]
+    assert it.item_id == "dpla:abc123" and it.source == "DPLA" and it.format == "film"
+    assert it.date == "1942" and it.creator == "Tennessee Valley Authority"
+    assert it.rights.startswith("No known copyright")
+    assert it.item_page_url == "https://provider.org/item/abc123"
+    assert it.master_url == ""                                # DPLA has no direct master
+    assert "lead only" in it.streaming_note
+
+
+def test_dpla_type_mismatch_skipped():
+    f = DplaFetcher(FakeClient([DPLA_PAGE]), api_key="k", use_cache=False)
+    assert list(f.search("TVA", "photo", "big_machine")) == []  # it's a moving image
+
+
+def test_dpla_stream_is_none():
+    f = DplaFetcher(FakeClient([]), api_key="k", use_cache=False)
+    it = Item(item_id="dpla:x", source="DPLA", format="film", group="rural")
+    assert f.resolve_stream(it) is None
+
+
+# --------------------------------------------------------------------------- #
+# NARA
+# --------------------------------------------------------------------------- #
+
+def _nara_page(source_key="_source", gtypes=None, year="1940-01-01"):
+    return {"body": {"hits": {"hits": [{
+        "_id": "12345",
+        source_key: {
+            "title": "Stringing REA line",
+            "generalRecordsTypes": gtypes if gtypes is not None else ["Moving Images"],
+            "productionDates": [{"logicalDate": year}],
+            "useRestriction": {"status": "Unrestricted"},
+            "digitalObjects": [
+                {"objectType": "Video (MP4)",
+                 "objectUrl": "https://catalog.archives.gov/media/12345/clip.mp4",
+                 "objectFileSize": 5000000},
+                {"objectType": "Thumbnail",
+                 "objectUrl": "https://catalog.archives.gov/media/12345/thumb.jpg",
+                 "objectFileSize": 20000},
+            ],
+        },
+    }]}}}
+
+
+def test_nara_parses_film_and_finds_master():
+    f = NaraFetcher(FakeClient([_nara_page()]), use_cache=False)
+    items = list(f.search("REA", "film", "rural"))
+    assert len(items) == 1
+    it = items[0]
+    assert it.item_id == "nara:12345" and it.source == "NARA" and it.format == "film"
+    assert it.master_url.endswith("/clip.mp4")
+    assert it.thumbnail_url.endswith("/thumb.jpg")
+    assert it.date == "1940" and "Unrestricted" in it.rights
+    assert it.item_page_url == "https://catalog.archives.gov/id/12345"
+    assert f.resolve_stream(it) == it.master_url
+
+
+def test_nara_defensive_record_nesting():
+    # Some deployments nest the record under 'fields' instead of '_source'.
+    f = NaraFetcher(FakeClient([_nara_page(source_key="fields")]), use_cache=False)
+    items = list(f.search("REA", "film", "rural"))
+    assert len(items) == 1 and items[0].item_id == "nara:12345"
+
+
+def test_nara_out_of_era_and_type_filtered():
+    f = NaraFetcher(FakeClient([_nara_page(year="1965-01-01")]), use_cache=False)
+    assert list(f.search("REA", "film", "rural")) == []           # 1965 excluded
+    f2 = NaraFetcher(FakeClient([_nara_page()]), use_cache=False)
+    assert list(f2.search("REA", "photo", "rural")) == []          # it's a moving image
+
+
+# --------------------------------------------------------------------------- #
+# Registry wiring
+# --------------------------------------------------------------------------- #
+
+def test_build_fetchers_respects_dpla_key_presence():
+    from grid_archive.search import build_fetchers
+    from grid_archive.http import HttpClient
+
+    os.environ.pop(config.DPLA_API_KEY_ENV, None)
+    sources = [f.source for f in build_fetchers(HttpClient(), use_cache=False)]
+    assert "DPLA" not in sources
+    for expected in ("LOC", "IA", "WIKIMEDIA", "NARA"):
+        assert expected in sources
+
+    os.environ[config.DPLA_API_KEY_ENV] = "test-key"
+    try:
+        sources2 = [f.source for f in build_fetchers(HttpClient(), use_cache=False)]
+        assert "DPLA" in sources2
+    finally:
+        os.environ.pop(config.DPLA_API_KEY_ENV, None)
 
 
 if __name__ == "__main__":
