@@ -14,8 +14,33 @@ Run `python -m grid_archive <subcommand> --help` for options.
 from __future__ import annotations
 
 import argparse
+import os
 
 import config
+
+
+def load_dotenv(path: str = ".env") -> None:
+    """Load KEY=VALUE lines from a local .env into os.environ if present.
+
+    Never overrides a variable already set in the real environment, so an
+    explicit `export` still wins. Kept dependency-free on purpose. The .env file
+    is gitignored — put secrets like ANTHROPIC_API_KEY here and they stay local.
+    """
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except OSError:
+        pass
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    load_dotenv()
     args = build_parser().parse_args(argv)
     use_cache = not args.no_cache
 

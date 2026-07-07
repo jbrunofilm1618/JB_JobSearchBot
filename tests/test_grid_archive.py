@@ -15,6 +15,7 @@ from grid_archive.models import Item, MANIFEST_COLUMNS
 from grid_archive.fetchers.loc import LocFetcher, _iter_urls, _slug_from_url, _as_text
 from grid_archive.fetchers.internet_archive import InternetArchiveFetcher, _parse_length
 from grid_archive import manifest, sheet
+from grid_archive.cli import load_dotenv
 
 
 class FakeClient:
@@ -209,6 +210,29 @@ def test_sheet_renders_groups_toggles_and_links():
 def test_sheet_handles_empty_manifest():
     out = sheet.render_sheet([])
     assert "contact sheet" in out.lower()
+
+
+# --------------------------------------------------------------------------- #
+# .env loader
+# --------------------------------------------------------------------------- #
+
+def test_dotenv_loads_but_never_overrides_real_env():
+    with tempfile.TemporaryDirectory() as d:
+        env_path = os.path.join(d, ".env")
+        with open(env_path, "w") as fh:
+            fh.write("# comment\n")
+            fh.write('GRID_TEST_NEW="hello"\n')
+            fh.write("GRID_TEST_EXISTING=from_file\n")
+            fh.write("blank_line_ignored\n")
+        os.environ.pop("GRID_TEST_NEW", None)
+        os.environ["GRID_TEST_EXISTING"] = "from_env"
+        try:
+            load_dotenv(env_path)
+            assert os.environ["GRID_TEST_NEW"] == "hello"       # quotes stripped
+            assert os.environ["GRID_TEST_EXISTING"] == "from_env"  # real env wins
+        finally:
+            os.environ.pop("GRID_TEST_NEW", None)
+            os.environ.pop("GRID_TEST_EXISTING", None)
 
 
 if __name__ == "__main__":

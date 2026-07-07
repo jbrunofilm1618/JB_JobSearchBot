@@ -53,6 +53,14 @@ python -m grid_archive judge          # writes shortlist.json, merges scores int
 python -m grid_archive sheet          # re-render to pick up scores + shortlist toggle
 ```
 
+Prefer not to `export` every time? Drop the key in a local `.env` (copy
+`.env.example`) — the CLI auto-loads it, it's gitignored, and an exported
+variable still overrides it:
+
+```bash
+cp .env.example .env      # then edit .env and paste your key
+```
+
 Finally, pull full-resolution masters for only the shots you chose:
 
 ```bash
