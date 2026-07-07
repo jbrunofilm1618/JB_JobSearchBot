@@ -86,9 +86,13 @@ def _drain_source(fetcher: Fetcher) -> List[Item]:
     return found
 
 
-def run_search(use_cache: bool = True) -> List[Item]:
+def run_search(use_cache: bool = True, sources: Optional[set] = None) -> List[Item]:
     # client=None -> one HttpClient per fetcher, enabling per-source parallelism.
     fetchers = build_fetchers(None, use_cache)
+    if sources:
+        fetchers = [f for f in fetchers if f.source in sources]
+        log.info("source filter active: searching only %s",
+                 ", ".join(f.source for f in fetchers) or "(none matched!)")
 
     # Seed with the existing manifest so we merge rather than clobber.
     existing = manifest.load_items()

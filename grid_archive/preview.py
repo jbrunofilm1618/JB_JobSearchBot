@@ -220,7 +220,8 @@ def _preview_source(source: str, its: List[Item], max_clip_mb: int,
     return source
 
 
-def run_preview(max_clip_mb: int, use_cache: bool = True) -> List[Item]:
+def run_preview(max_clip_mb: int, use_cache: bool = True,
+                sources: Optional[set] = None) -> List[Item]:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     items = manifest.load_items()
@@ -230,6 +231,8 @@ def run_preview(max_clip_mb: int, use_cache: bool = True) -> List[Item]:
 
     by_source: Dict[str, List[Item]] = {}
     for it in items:
+        if sources and it.source not in sources:
+            continue  # --sources filter: other rows stay untouched in the manifest
         by_source.setdefault(it.source, []).append(it)
 
     executor = ThreadPoolExecutor(max_workers=max(1, len(by_source)))
