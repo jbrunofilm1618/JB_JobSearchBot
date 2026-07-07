@@ -220,6 +220,25 @@ def test_sheet_handles_empty_manifest():
     assert "contact sheet" in out.lower()
 
 
+def test_run_sheet_writes_timestamped_snapshot():
+    import glob
+    with tempfile.TemporaryDirectory() as d:
+        old = config.OUTPUT_DIR
+        config.OUTPUT_DIR = d
+        try:
+            manifest.save_items(_sample_items())
+            sheet.run_sheet()
+            live = os.path.join(d, config.CONTACT_SHEET_HTML)
+            snaps = glob.glob(os.path.join(d, config.SHEET_ARCHIVE_DIR,
+                                           "contact_sheet_*.html"))
+            assert os.path.exists(live)
+            assert len(snaps) == 1
+            content = open(snaps[0]).read()
+            assert '<base href="../">' in content   # images resolve from archive/
+        finally:
+            config.OUTPUT_DIR = old
+
+
 # --------------------------------------------------------------------------- #
 # .env loader
 # --------------------------------------------------------------------------- #

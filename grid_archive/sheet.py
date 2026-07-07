@@ -199,11 +199,25 @@ def render_sheet(items: List[Item]) -> str:
 
 
 def run_sheet() -> str:
+    from datetime import datetime
+
     items = manifest.load_items()
     if not items:
         log.warning("no manifest found; run `search` first")
+    html_out = render_sheet(items)
     path = os.path.join(config.OUTPUT_DIR, config.CONTACT_SHEET_HTML)
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write(render_sheet(items))
+        fh.write(html_out)
     log.info("wrote %s (%d items)", path, len(items))
+
+    # Timestamped snapshot so regenerating never loses a prior version. The
+    # snapshot lives one level down in archive/, so a <base href="../"> makes
+    # its relative previews/ image paths resolve against the project root.
+    archive_dir = os.path.join(config.OUTPUT_DIR, config.SHEET_ARCHIVE_DIR)
+    os.makedirs(archive_dir, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    snapshot = os.path.join(archive_dir, f"contact_sheet_{stamp}.html")
+    with open(snapshot, "w", encoding="utf-8") as fh:
+        fh.write(html_out.replace("<head>", '<head><base href="../">', 1))
+    log.info("archived snapshot: %s", snapshot)
     return path
