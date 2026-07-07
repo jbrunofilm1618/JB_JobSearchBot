@@ -16,7 +16,14 @@ import config
 import requests
 
 
+# Credential params are excluded from cache keys so rotating a key never
+# invalidates the response cache (and keys never appear in cache filenames).
+_SECRET_PARAMS = {"api_key", "apikey", "key", "token"}
+
+
 def _api_cache_path(url: str, params: Optional[dict]) -> str:
+    if params:
+        params = {k: v for k, v in params.items() if k.lower() not in _SECRET_PARAMS}
     full = requests.Request("GET", url, params=params).prepare().url
     digest = hashlib.sha1(full.encode("utf-8")).hexdigest()
     return os.path.join(config.CACHE_DIR, "api", f"{digest}.json")
@@ -25,16 +32,22 @@ def _api_cache_path(url: str, params: Optional[dict]) -> str:
 def cached_json(url: str, params: Optional[dict], fetch: Callable[[], dict],
                 use_cache: bool = True) -> dict:
     """Return cached JSON for (url, params) if present, else call `fetch`, store
-    the result, and return it."""
+    the result, and return it. A corrupt cache file (e.g. from a mid-write kill)
+    is treated as a miss and deleted, never a crash."""
     path = _api_cache_path(url, params)
     if use_cache and os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as fh:
-            return json.load(fh)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+        except ValueError:
+            os.remove(path)  # truncated by an interrupted write — refetch
 
     data = fetch()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh)
+    os.replace(tmp, path)  # atomic: a kill mid-write can't corrupt the cache
     return data
 
 

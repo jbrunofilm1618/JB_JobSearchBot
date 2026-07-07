@@ -30,16 +30,24 @@ def load_items() -> List[Item]:
 
 
 def save_items(items: List[Item]) -> None:
-    # Full fidelity JSON (all fields, including local paths) for resumability.
-    with open(manifest_json_path(), "w", encoding="utf-8") as fh:
+    # Both files are written atomically (tmp + os.replace): the manifest is the
+    # resumability state, and checkpoints mean a kill can land mid-write.
+    json_path = manifest_json_path()
+    tmp = json_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        # Full fidelity JSON (all fields, including local paths) for resumability.
         json.dump([it.to_dict() for it in items], fh, indent=2, default=str)
+    os.replace(tmp, json_path)
 
-    # Reviewable CSV slice.
-    with open(manifest_csv_path(), "w", encoding="utf-8", newline="") as fh:
+    csv_path = manifest_csv_path()
+    tmp = csv_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="") as fh:
+        # Reviewable CSV slice.
         writer = csv.DictWriter(fh, fieldnames=MANIFEST_COLUMNS)
         writer.writeheader()
         for it in items:
             writer.writerow(it.manifest_row())
+    os.replace(tmp, csv_path)
 
 
 def index_by_id(items: List[Item]) -> Dict[str, Item]:

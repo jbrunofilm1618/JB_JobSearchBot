@@ -10,6 +10,7 @@ request URL and every 429 is logged.
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Optional
 
@@ -19,6 +20,13 @@ import config
 from .logging_setup import get_logger
 
 log = get_logger()
+
+# Never write credentials to the logfile: redact known secret query params.
+_SECRET_PARAM_RE = re.compile(r"((?:api_key|apikey|key|token)=)[^&]+", re.IGNORECASE)
+
+
+def _redact(url: str) -> str:
+    return _SECRET_PARAM_RE.sub(r"\1***", url or "")
 
 
 class RateLimitedError(Exception):
@@ -51,17 +59,23 @@ class HttpClient:
         delay = config.BASE_DELAY_SECONDS * (config.BACKOFF_FACTOR ** attempt)
         return min(delay, config.BACKOFF_CAP_SECONDS)
 
-    def get_json(self, url: str, params: Optional[dict] = None) -> dict:
+    def get_json(self, url: str, params: Optional[dict] = None,
+                 headers: Optional[dict] = None) -> dict:
         """GET a URL expecting JSON. Retries on 429 / CAPTCHA / transient error
-        with exponential backoff. Raises RateLimitedError if it never succeeds."""
+        with exponential backoff. Raises RateLimitedError if it never succeeds.
+
+        `headers` are per-request extras (e.g. a source-specific API key) — they
+        are NOT installed on the shared session, so keys never leak to other
+        hosts."""
         last_exc: Optional[Exception] = None
         for attempt in range(config.MAX_RETRIES):
             # Polite constant delay before every request.
             self._sleep(config.BASE_DELAY_SECONDS)
-            full = requests.Request("GET", url, params=params).prepare().url
+            full = _redact(requests.Request("GET", url, params=params).prepare().url)
             log.info("GET %s", full)
             try:
-                resp = self.session.get(url, params=params, timeout=60)
+                resp = self.session.get(url, params=params, headers=headers,
+                                        timeout=60)
             except requests.RequestException as exc:
                 last_exc = exc
                 log.warning("network error on %s: %s (attempt %d)", full, exc, attempt + 1)
@@ -105,7 +119,7 @@ class HttpClient:
         import os
 
         self._sleep(config.BASE_DELAY_SECONDS)
-        log.info("GET (download) %s", url)
+        log.info("GET (download) %s", _redact(url))
         for attempt in range(config.MAX_RETRIES):
             try:
                 with self.session.get(url, stream=True, timeout=120) as resp:

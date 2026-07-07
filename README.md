@@ -112,7 +112,7 @@ always-include titles, and the judge model + creative brief.
 | `preview` | Medium-res preview JPEGs into `previews/`; capped MP4 derivatives into `previews/clips/`; 6 evenly-spaced frames per film into `previews/frames/`. Films with no MP4 derivative fall back to a thumbnail and are flagged **"not digitized for streaming"** so you know to source them elsewhere. |
 | `sheet` | `contact_sheet.html` — one static dark page, thumbnails and filmstrips grouped rural / urban / big-machine, each linking to its LOC or Internet Archive page, with title, date, photographer, rights, and judge score. Toggles: media-type filter (all / photos / film), sort-by-judge-score, shortlist-only. |
 | `judge` | Sends each item's frames/image to Claude with the creative brief; gets keep/skip + 1–5 score + one line of reasoning. Writes `shortlist.json`, merges scores into the manifest. Skip verdicts on long films are treated as provisional — the manifest keeps everything. |
-| `fetch-masters` | Highest-resolution asset (LOC TIFF/derivative, IA original) for only the selected item ids, into `masters/`. |
+| `fetch-masters` | Highest-resolution asset (LOC TIFF/derivative, IA original, NARA digital object, Wikimedia original) for only the selected item ids, into `masters/`. DPLA rows point to the holding institution instead. |
 
 ## Sources
 
@@ -126,10 +126,36 @@ always-include titles, and the judge model + creative brief.
   Scoped to the `prelinger` and `FedFlix` collections; *Power and the Land*
   (1940, Joris Ivens, REA) is pulled in on every run. `licenseurl` captured per
   item.
+- **National Archives (NARA)** — `catalog.archives.gov` API v2. US-government
+  public-domain moving images and photographs (TVA, REA, WPA); digital objects
+  are the hi-res masters. Runs anonymously; if the host returns `403`, set a free
+  `NARA_API_KEY` (from api.data.gov) and rerun.
+- **Wikimedia Commons** — MediaWiki API, no key. Freely-licensed historical
+  photos and some film, full-res originals, explicit license per file. Only
+  freely-reusable files are kept (`WIKIMEDIA_FREE_ONLY`); the license is always
+  recorded. Dates are checked client-side, so undated files are kept and flagged.
+- **DPLA** — `api.dp.la` v2, **free key required** (`DPLA_API_KEY`; request one
+  at <https://pro.dp.la/developers/policies>). One API over 4000+ US
+  repositories. DPLA is a discovery layer: rows carry metadata, a thumbnail, and
+  a link to the holding institution — the hi-res master lives at that
+  institution, so DPLA film rows are flagged as leads and `fetch-masters` can't
+  pull their originals directly. Skipped with a warning if no key is set.
 
-Both sit behind a common `Fetcher` interface (`grid_archive/fetchers/base.py`),
-so a third source — e.g. the National Archives catalog API — is one subclass
-plus one line in `grid_archive/search.build_fetchers()`.
+All sources sit behind a common `Fetcher` interface
+(`grid_archive/fetchers/base.py`) and are registered in
+`grid_archive/search.build_fetchers()` — adding another (e.g. Europeana) is one
+subclass plus one line. Any source needing an API key it doesn't have is skipped
+with a warning, never a crash.
+
+### API keys
+
+Put keys in your shell or a local `.env` (auto-loaded, gitignored):
+
+```bash
+DPLA_API_KEY=...      # required for DPLA
+NARA_API_KEY=...      # optional; only if NARA returns 403
+ANTHROPIC_API_KEY=... # only for the judge pass
+```
 
 ## Notes
 

@@ -13,11 +13,10 @@ from typing import Dict, List, Optional
 import config
 from .cache import safe_filename
 from .fetchers.base import Fetcher
-from .fetchers.internet_archive import InternetArchiveFetcher
-from .fetchers.loc import LocFetcher
 from .http import HttpClient
 from .logging_setup import get_logger
 from .models import Item
+from .search import fetcher_map
 from . import manifest
 
 log = get_logger()
@@ -52,16 +51,16 @@ def run_fetch_masters(ids: Optional[List[str]] = None,
         return items
 
     client = HttpClient()
-    fetchers: Dict[str, Fetcher] = {
-        "LOC": LocFetcher(client, use_cache=use_cache),
-        "IA": InternetArchiveFetcher(client, use_cache=use_cache),
-    }
+    fetchers: Dict[str, Fetcher] = fetcher_map(client, use_cache)
     os.makedirs(config.MASTER_DIR, exist_ok=True)
 
     for item_id in wanted:
         item = index.get(item_id)
         if item is None:
             log.warning("id not in manifest: %s", item_id)
+            continue
+        # Rerun short-circuit: already fetched -> no detail request, no download.
+        if item.master_path and os.path.exists(item.master_path):
             continue
         fetcher = fetchers.get(item.source)
         if fetcher is not None:
