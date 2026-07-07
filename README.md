@@ -28,6 +28,22 @@ download without them; you just won't get filmstrips).
 
 Python 3.9+.
 
+## One-command local setup
+
+```bash
+git clone https://github.com/jbrunofilm1618/JB_JobSearchBot
+cd JB_JobSearchBot
+git checkout claude/archive-scraper-restructure-qefxhm
+./setup.sh          # venv + deps + ffmpeg check + smoke test
+```
+
+Then activate the venv and run (see below):
+
+```bash
+source .venv/bin/activate
+python -m grid_archive run
+```
+
 ## Quick start
 
 ```bash
