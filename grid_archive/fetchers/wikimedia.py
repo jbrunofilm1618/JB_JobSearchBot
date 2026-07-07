@@ -31,8 +31,10 @@ _MEDIATYPE_FORMAT = {"BITMAP": "photo", "DRAWING": "photo", "VIDEO": "film"}
 _TAG_RE = re.compile(r"<[^>]+>")
 _YEAR_RE = re.compile(r"(1[89]\d\d|20\d\d)")
 
-# License short names / substrings that are NOT freely reusable.
-_NONFREE_HINTS = ("fair use", "non-free", "all rights reserved", "copyright")
+# License short names / substrings that are NOT freely reusable. Deliberately
+# narrow: a bare "copyright" would wrongly match "No known copyright
+# restrictions" — the Flickr Commons tag on LOC's own FSA-era uploads.
+_NONFREE_HINTS = ("fair use", "non-free", "all rights reserved")
 
 
 def _strip(text: Optional[str]) -> str:
@@ -120,7 +122,11 @@ class WikimediaFetcher(Fetcher):
             if any(h in blob for h in _NONFREE_HINTS):
                 return None
 
-        year = _extract_year(m("DateTimeOriginal"), m("DateTime"))
+        # Era check uses DateTimeOriginal ONLY. extmetadata DateTime is the file
+        # UPLOAD/scan timestamp (2005-2025 for almost everything) — using it as a
+        # fallback would misdate genuinely in-era photos to the upload year and
+        # silently drop them. An undated 1930s photo must be kept and flagged.
+        year = _extract_year(m("DateTimeOriginal"))
         start_year = int(config.START_DATE[:4])
         end_year = int(config.END_DATE[:4])
         streaming_note = ""

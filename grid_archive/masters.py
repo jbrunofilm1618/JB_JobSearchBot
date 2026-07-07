@@ -59,6 +59,9 @@ def run_fetch_masters(ids: Optional[List[str]] = None,
         if item is None:
             log.warning("id not in manifest: %s", item_id)
             continue
+        # Rerun short-circuit: already fetched -> no detail request, no download.
+        if item.master_path and os.path.exists(item.master_path):
+            continue
         fetcher = fetchers.get(item.source)
         if fetcher is not None:
             try:

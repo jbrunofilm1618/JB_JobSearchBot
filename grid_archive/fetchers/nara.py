@@ -115,9 +115,11 @@ class NaraFetcher(Fetcher):
         super().__init__(client, use_cache)
         self.api_key = api_key
         self._warned_403 = False
-        # Attach the key to the shared session so every request carries it.
-        if api_key:
-            client.session.headers.update({"x-api-key": api_key})
+        self._disabled = False
+        # The key is sent per-request to NARA endpoints only — NEVER installed on
+        # the shared session, which would transmit it to every other host the
+        # tool contacts (LOC, IA, Wikimedia, image hosts...).
+        self._headers = {"x-api-key": api_key} if api_key else None
 
     def _search_page(self, query: str, offset: int) -> dict:
         url = f"{config.NARA_API_BASE}/records/search"
@@ -128,16 +130,22 @@ class NaraFetcher(Fetcher):
         }
         try:
             return cached_json(url, params,
-                               lambda: self.client.get_json(url, params),
+                               lambda: self.client.get_json(url, params,
+                                                            headers=self._headers),
                                use_cache=self.use_cache)
         except Exception as exc:  # noqa: BLE001
-            if "403" in str(exc) and not self._warned_403:
-                self._warned_403 = True
-                log.warning("NARA returned 403 — set a free NARA_API_KEY "
-                            "(api.data.gov) and rerun. Skipping NARA.")
+            if "403" in str(exc):
+                self._disabled = True  # latch: no more doomed requests this run
+                if not self._warned_403:
+                    self._warned_403 = True
+                    log.warning("NARA returned 403 — set a free NARA_API_KEY "
+                                "(api.data.gov) and rerun. Skipping NARA for "
+                                "the rest of this run.")
             raise
 
     def search(self, query: str, media_type: str, group: str) -> Iterator[Item]:
+        if self._disabled:
+            return
         start_year = int(config.START_DATE[:4])
         end_year = int(config.END_DATE[:4])
 

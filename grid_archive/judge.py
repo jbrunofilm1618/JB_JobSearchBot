@@ -79,16 +79,20 @@ def _extract_json(text: str):
 def _judge_batch(client, batch: List[Item]) -> None:
     content: List[dict] = []
     labelled: List[Item] = []
-    for idx, item in enumerate(batch, 1):
+    for item in batch:
         images = _item_images(item)
         blocks = [b for b in (_image_block(p) for p in images) if b]
         if not blocks:
             continue  # nothing to look at; leave unjudged
+        # CRITICAL: the ITEM label must be the position in `labelled`, not in
+        # `batch` — if an item is skipped for missing images, batch-indexed
+        # labels desynchronize from the verdict mapping below and every verdict
+        # after the gap lands on the wrong item.
+        labelled.append(item)
         content.append({"type": "text",
-                        "text": f"ITEM {idx}: {item.title or '(untitled)'} "
+                        "text": f"ITEM {len(labelled)}: {item.title or '(untitled)'} "
                                 f"[{item.format}, {item.date or 'n.d.'}]"})
         content.extend(blocks)
-        labelled.append(item)
 
     if not labelled:
         return

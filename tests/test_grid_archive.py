@@ -33,8 +33,8 @@ class FakeClient:
         self.calls = []
         self.session = type("S", (), {"headers": {}})()  # mimic requests.Session.headers
 
-    def get_json(self, url, params=None):
-        self.calls.append((url, params))
+    def get_json(self, url, params=None, headers=None):
+        self.calls.append((url, params, headers))
         return self._payloads.pop(0) if self._payloads else {}
 
 
@@ -408,6 +408,124 @@ def test_nara_out_of_era_and_type_filtered():
     assert list(f.search("REA", "film", "rural")) == []           # 1965 excluded
     f2 = NaraFetcher(FakeClient([_nara_page()]), use_cache=False)
     assert list(f2.search("REA", "photo", "rural")) == []          # it's a moving image
+
+
+# --------------------------------------------------------------------------- #
+# Audit-fix regressions
+# --------------------------------------------------------------------------- #
+
+def test_loc_contributor_boosts_rural_only_and_page_capped():
+    f = LocFetcher(FakeClient([]), use_cache=False)
+    rural = f._search_specs("lineman", "photo", "rural")
+    urban = f._search_specs("neon", "photo", "urban")
+    assert any("contributor" in label for _, label, _ in rural)
+    assert not any("contributor" in label for _, label, _ in urban)  # spec: rural only
+    # base spec paginates fully; boost specs are capped at 1 page
+    assert rural[0][2] == config.MAX_PAGES_PER_QUERY
+    assert all(mp == 1 for _, label, mp in rural if label != "base")
+
+
+def test_loc_client_side_year_backstop():
+    raw = dict(LOC_PAGE["results"][0], date="1972")
+    f = LocFetcher(FakeClient([]), use_cache=False)
+    assert f._parse_result(raw, "photo", "rural", "q") is None   # out of era
+    undated = dict(LOC_PAGE["results"][0], date="")
+    assert f._parse_result(undated, "photo", "rural", "q") is not None  # kept
+
+
+def test_wikimedia_upload_timestamp_not_used_for_era():
+    # Undated original + modern upload timestamp must be KEPT and flagged,
+    # not misdated to the upload year and dropped.
+    payload = {"query": {"pages": {"8": {"pageid": 8, "title": "File:undated.jpg",
+        "imageinfo": [{"url": "u.jpg", "mediatype": "BITMAP",
+                       "extmetadata": {"DateTime": {"value": "2017-06-27"},
+                                       "LicenseShortName": {"value": "No known copyright restrictions"}}}]}}}}
+    f = WikimediaFetcher(FakeClient([payload]), use_cache=False)
+    items = list(f.search("q", "photo", "rural"))
+    assert len(items) == 1
+    assert "undated" in items[0].streaming_note
+    # And the Flickr Commons tag is treated as free, not blacklisted.
+    assert "No known copyright" in items[0].rights
+
+
+def test_cache_key_excludes_api_key():
+    from grid_archive.cache import _api_cache_path
+    a = _api_cache_path("https://api.dp.la/v2/items", {"q": "TVA", "api_key": "AAA"})
+    b = _api_cache_path("https://api.dp.la/v2/items", {"q": "TVA", "api_key": "BBB"})
+    c = _api_cache_path("https://api.dp.la/v2/items", {"q": "REA", "api_key": "AAA"})
+    assert a == b          # rotating the key keeps the cache
+    assert a != c          # different queries still differ
+
+
+def test_http_log_redaction():
+    from grid_archive.http import _redact
+    out = _redact("https://api.dp.la/v2/items?q=TVA&api_key=SECRET123&page=1")
+    assert "SECRET123" not in out and "api_key=***" in out
+
+
+def test_nara_key_not_on_shared_session_and_403_latch():
+    client = FakeClient([])
+    f = NaraFetcher(client, api_key="NARAKEY", use_cache=False)
+    assert "x-api-key" not in client.session.headers      # session untouched
+    f._disabled = True
+    assert list(f.search("REA", "film", "rural")) == []   # latch short-circuits
+
+
+def test_preview_notes_append_not_clobber():
+    from grid_archive.preview import _append_note, _clear_status_notes, NOT_STREAMING
+    it = Item(item_id="dpla:x", source="DPLA", format="film", group="rural",
+              streaming_note="lead only — master at provider")
+    _append_note(it, NOT_STREAMING)
+    assert "lead only" in it.streaming_note and NOT_STREAMING in it.streaming_note
+    _append_note(it, "clip exceeds 100MB cap")            # replaces status, keeps provenance
+    assert "lead only" in it.streaming_note
+    assert NOT_STREAMING not in it.streaming_note
+    _clear_status_notes(it)
+    assert it.streaming_note == "lead only — master at provider"
+
+
+def test_judge_labels_match_verdict_mapping_with_gaps():
+    # Item 2 of 3 has no image on disk; labels must be 1..len(labelled) so
+    # verdicts map back to the right items.
+    import grid_archive.judge as judge
+
+    a = Item(item_id="a", source="LOC", format="photo", group="rural", title="A",
+             preview_path="/nonexistent-but-labelled-a.jpg")
+    b = Item(item_id="b", source="LOC", format="photo", group="rural", title="B",
+             preview_path="/missing.jpg")
+    c = Item(item_id="c", source="LOC", format="photo", group="rural", title="C",
+             preview_path="/nonexistent-but-labelled-c.jpg")
+
+    sent = {}
+
+    class FakeResp:
+        content = [type("T", (), {"type": "text",
+                                  "text": '[{"item":1,"keep":true,"score":5,"reason":"r1"},'
+                                          '{"item":2,"keep":false,"score":1,"reason":"r2"}]'})()]
+
+    class FakeMessages:
+        def create(self, **kw):
+            sent["labels"] = [blk["text"] for blk in kw["messages"][0]["content"]
+                              if blk.get("type") == "text" and blk["text"].startswith("ITEM")]
+            return FakeResp()
+
+    class FakeAnthropic:
+        messages = FakeMessages()
+
+    real_block = judge._image_block
+    judge._image_block = lambda p: (None if "missing" in p else
+                                    {"type": "image", "source": {"type": "base64",
+                                     "media_type": "image/jpeg", "data": "AA=="}})
+    try:
+        judge._judge_batch(FakeAnthropic(), [a, b, c])
+    finally:
+        judge._image_block = real_block
+
+    assert sent["labels"][0].startswith("ITEM 1: A")
+    assert sent["labels"][1].startswith("ITEM 2: C")   # C is labelled 2, not 3
+    assert a.judge_score == 5 and a.judge_keep is True
+    assert c.judge_score == 1 and c.judge_keep is False  # verdict 2 -> C, not lost
+    assert b.judge_score is None                          # skipped stays unjudged
 
 
 # --------------------------------------------------------------------------- #

@@ -17,6 +17,7 @@ source-agnostic. Deduplication across all of these axes happens by item id.
 
 from __future__ import annotations
 
+import re
 from typing import Iterator, List, Optional, Tuple
 
 import config
@@ -29,6 +30,7 @@ log = get_logger()
 
 _ENDPOINT = {"photo": "photos", "film": "film-and-videos"}
 _FILM_COLLECTION_BOOST = "partof:national screening room"
+_YEAR_RE = re.compile(r"(1[89]\d\d|20\d\d)")
 
 
 def _slug_from_url(url: str) -> str:
@@ -73,17 +75,24 @@ class LocFetcher(Fetcher):
 
     # ---- search ---------------------------------------------------------- #
 
-    def _search_specs(self, query: str, media_type: str) -> List[Tuple[List[str], str]]:
-        """Return (fa_filters, label) tuples defining the boosted searches to run
-        for one (query, media_type)."""
-        specs: List[Tuple[List[str], str]] = [([], "base")]
+    def _search_specs(self, query: str, media_type: str,
+                      group: str) -> List[Tuple[List[str], str, int]]:
+        """Return (fa_filters, label, max_pages) triples defining the boosted
+        searches to run for one (query, media_type, group).
+
+        Boost specs are subset filters of the same q, so pages 2+ mostly refetch
+        what the base spec already yielded — they get 1 page. Contributor boosts
+        (the FSA photographers) run only against the rural query set, per spec:
+        'neon' filtered by Dorothea Lange is a guaranteed-empty request."""
+        specs: List[Tuple[List[str], str, int]] = [([], "base", config.MAX_PAGES_PER_QUERY)]
         if media_type == "photo":
             for boost in config.LOC_COLLECTION_BOOSTS:
-                specs.append(([boost], f"collection:{boost}"))
-            for contrib in config.LOC_CONTRIBUTOR_BOOSTS:
-                specs.append(([contrib], f"contributor:{contrib}"))
+                specs.append(([boost], f"collection:{boost}", 1))
+            if group == "rural":
+                for contrib in config.LOC_CONTRIBUTOR_BOOSTS:
+                    specs.append(([contrib], f"contributor:{contrib}", 1))
         else:  # film
-            specs.append(([_FILM_COLLECTION_BOOST], "national-screening-room"))
+            specs.append(([_FILM_COLLECTION_BOOST], "national-screening-room", 1))
         return specs
 
     def _fetch_page(self, endpoint: str, query: str, fa: List[str], page: int) -> dict:
@@ -94,8 +103,13 @@ class LocFetcher(Fetcher):
             "c": config.RESULTS_PER_PAGE,
             "sp": page,
             "at": "results,pagination",
+            # Belt and braces: LOC documentation describes date filtering both as
+            # start_date/end_date params and as a dates=YYYY/YYYY facet; unknown
+            # params are silently ignored, so send both. A client-side year check
+            # in _parse_result backstops whichever the server ignores.
             "start_date": config.START_DATE,
             "end_date": config.END_DATE,
+            "dates": f"{config.START_DATE[:4]}/{config.END_DATE[:4]}",
         }
         if fa:
             params["fa"] = "|".join(fa)
@@ -106,9 +120,10 @@ class LocFetcher(Fetcher):
     def search(self, query: str, media_type: str, group: str) -> Iterator[Item]:
         endpoint = _ENDPOINT[media_type]
 
-        for fa, label in self._search_specs(query, media_type):
+        for fa, label, max_pages in self._search_specs(query, media_type, group):
             items = list(
-                self._run_spec_iter(endpoint, query, media_type, group, fa, label))
+                self._run_spec_iter(endpoint, query, media_type, group, fa, label,
+                                    max_pages))
 
             # FSA/OWI motherlode fallback: if the boost yielded nothing, retry
             # with the plain-language collection name.
@@ -117,12 +132,13 @@ class LocFetcher(Fetcher):
                          fa[0], config.LOC_COLLECTION_FALLBACK)
                 items = list(self._run_spec_iter(
                     endpoint, query, media_type, group,
-                    [config.LOC_COLLECTION_FALLBACK], "collection-fallback"))
+                    [config.LOC_COLLECTION_FALLBACK], "collection-fallback", 1))
 
             yield from items
 
-    def _run_spec_iter(self, endpoint, query, media_type, group, fa, label) -> Iterator[Item]:
-        for page in range(1, config.MAX_PAGES_PER_QUERY + 1):
+    def _run_spec_iter(self, endpoint, query, media_type, group, fa, label,
+                       max_pages=None) -> Iterator[Item]:
+        for page in range(1, (max_pages or config.MAX_PAGES_PER_QUERY) + 1):
             data = self._fetch_page(endpoint, query, fa, page)
             results = data.get("results") or []
             if not results:
@@ -160,6 +176,17 @@ class LocFetcher(Fetcher):
             best = ""  # resolved lazily to an MP4 during preview
         master = image_urls[-1] if image_urls else ""
 
+        # Client-side date backstop: whichever server-side date param the API
+        # ignores, a confidently out-of-era item never enters the manifest.
+        # Undated items are kept (dates are irregular; the manifest date column
+        # is there for you to check).
+        date_text = _as_text(raw.get("date")) or _as_text(raw.get("dates"))
+        year_match = _YEAR_RE.search(date_text)
+        if year_match:
+            year = int(year_match.group(1))
+            if not (int(config.START_DATE[:4]) <= year <= int(config.END_DATE[:4])):
+                return None
+
         rights = _as_text(raw.get("rights")) or _as_text(raw.get("rights_information")) \
             or _as_text(raw.get("rights_advisory"))
         if raw.get("access_restricted"):
@@ -171,7 +198,7 @@ class LocFetcher(Fetcher):
             format=media_type,
             group=group,
             title=_as_text(raw.get("title")),
-            date=_as_text(raw.get("date")) or _as_text(raw.get("dates")),
+            date=date_text,
             creator=_as_text(raw.get("contributor")) or _as_text(raw.get("creator")),
             collection=_as_text(raw.get("partof")),
             rights=rights or "unspecified",
