@@ -22,7 +22,7 @@ from grid_archive.fetchers.wikimedia import WikimediaFetcher
 from grid_archive.fetchers.dpla import DplaFetcher
 from grid_archive.fetchers.nara import NaraFetcher
 from grid_archive import manifest, sheet
-from grid_archive.cli import load_dotenv
+from grid_archive.cli import load_dotenv, parse_sources
 
 
 class FakeClient:
@@ -526,6 +526,19 @@ def test_judge_labels_match_verdict_mapping_with_gaps():
     assert a.judge_score == 5 and a.judge_keep is True
     assert c.judge_score == 1 and c.judge_keep is False  # verdict 2 -> C, not lost
     assert b.judge_score is None                          # skipped stays unjudged
+
+
+def test_parse_sources_aliases_and_errors():
+    assert parse_sources(None) is None
+    assert parse_sources("") is None
+    assert parse_sources("nara, wiki,dpla") == {"NARA", "WIKIMEDIA", "DPLA"}
+    assert parse_sources("LOC") == {"LOC"}
+    assert parse_sources("internet-archive".replace("-", "")) == {"IA"}
+    try:
+        parse_sources("napster")
+        assert False, "expected SystemExit"
+    except SystemExit as e:
+        assert "napster" in str(e)
 
 
 # --------------------------------------------------------------------------- #
