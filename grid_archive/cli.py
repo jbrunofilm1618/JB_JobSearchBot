@@ -79,6 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
     fm = sub.add_parser("fetch-masters", help="pull highest-res assets for selected ids")
     fm.add_argument("--ids", nargs="*", help="item ids to fetch (e.g. loc:2017... ia:...)")
     fm.add_argument("--ids-file", help="file with one item id per line")
+    fm.add_argument("--force", action="store_true",
+                    help="also pull rights-gated items (only if you hold a direct license)")
 
     rn = sub.add_parser("run", help="search -> preview -> sheet")
     rn.add_argument("--max-clip-mb", type=int, default=config.MAX_CLIP_MB)
@@ -139,7 +141,8 @@ def main(argv=None) -> int:
         run_judge(rejudge=args.rejudge)
     elif args.command == "fetch-masters":
         from .masters import run_fetch_masters
-        run_fetch_masters(ids=args.ids, ids_file=args.ids_file, use_cache=use_cache)
+        run_fetch_masters(ids=args.ids, ids_file=args.ids_file,
+                          use_cache=use_cache, force=args.force)
     elif args.command == "run":
         from .search import run_search
         from .preview import run_preview

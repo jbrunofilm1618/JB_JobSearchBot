@@ -31,10 +31,7 @@ _MEDIATYPE_FORMAT = {"BITMAP": "photo", "DRAWING": "photo", "VIDEO": "film"}
 _TAG_RE = re.compile(r"<[^>]+>")
 _YEAR_RE = re.compile(r"(1[89]\d\d|20\d\d)")
 
-# License short names / substrings that are NOT freely reusable. Deliberately
-# narrow: a bare "copyright" would wrongly match "No known copyright
-# restrictions" — the Flickr Commons tag on LOC's own FSA-era uploads.
-_NONFREE_HINTS = ("fair use", "non-free", "all rights reserved")
+from ..rights import classify_rights, TIER_RESTRICTED
 
 
 def _strip(text: Optional[str]) -> str:
@@ -118,8 +115,10 @@ class WikimediaFetcher(Fetcher):
             rights = f"{rights} ({license_url})"
 
         if config.WIKIMEDIA_FREE_ONLY:
-            blob = f"{license_short} {usage}".lower()
-            if any(h in blob for h in _NONFREE_HINTS):
+            # Full classifier, not a substring blacklist: catches CC-BY-NC /
+            # ND / in-copyright markers the old hint list let through, while
+            # still keeping "No known copyright restrictions" (Flickr Commons).
+            if classify_rights(f"{license_short} {usage} {license_url}") == TIER_RESTRICTED:
                 return None
 
         # Era check uses DateTimeOriginal ONLY. extmetadata DateTime is the file

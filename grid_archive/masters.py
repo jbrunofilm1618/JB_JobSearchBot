@@ -38,7 +38,8 @@ def _selected_ids(ids: Optional[List[str]], ids_file: Optional[str],
 
 def run_fetch_masters(ids: Optional[List[str]] = None,
                       ids_file: Optional[str] = None,
-                      use_cache: bool = True) -> List[Item]:
+                      use_cache: bool = True,
+                      force: bool = False) -> List[Item]:
     items = manifest.load_items()
     if not items:
         log.warning("no manifest found; run `search` first")
@@ -58,6 +59,15 @@ def run_fetch_masters(ids: Optional[List[str]] = None,
         item = index.get(item_id)
         if item is None:
             log.warning("id not in manifest: %s", item_id)
+            continue
+        # Rights gate: never pull masters for NC/ND/SA/in-copyright items —
+        # this is commercial use. --force overrides for a shot you intend to
+        # license directly with the rights holder.
+        from .rights import ensure_tier, HARD_GATED_TIERS
+        if ensure_tier(item) in HARD_GATED_TIERS and not force:
+            log.warning("rights-gated (%s), skipping master for %s — rights: %r "
+                        "(use --force only if you have a direct license)",
+                        item.rights_tier, item_id, item.rights[:120])
             continue
         # Rerun short-circuit: already fetched -> no detail request, no download.
         if item.master_path and os.path.exists(item.master_path):

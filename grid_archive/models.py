@@ -19,6 +19,7 @@ MANIFEST_COLUMNS = [
     "creator",          # creator / photographer
     "collection",
     "rights",           # LOC rights statement, or IA licenseurl
+    "rights_tier",      # public_domain | attribution | share_alike | restricted | unknown
     "item_page_url",
     "best_download_url",
     "duration_seconds",
@@ -45,6 +46,7 @@ class Item:
     creator: str = ""
     collection: str = ""
     rights: str = ""
+    rights_tier: str = ""
     item_page_url: str = ""
     best_download_url: str = ""         # medium preview / MP4 derivative
     thumbnail_url: str = ""             # small fallback thumbnail

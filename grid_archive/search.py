@@ -22,6 +22,7 @@ from .http import HttpClient
 from .logging_setup import get_logger
 from .models import Item
 from . import manifest
+from . import rights as rights_mod
 
 log = get_logger()
 
@@ -130,7 +131,11 @@ def run_search(use_cache: bool = True, sources: Optional[set] = None) -> List[It
         executor.shutdown(wait=False, cancel_futures=True)
 
     items = list(by_id.values())
+    for item in items:
+        rights_mod.ensure_tier(item)  # classify new rows, backfill old ones
     manifest.save_items(items)
-    log.info("search complete: %d total items (%d new) written to %s",
-             len(items), new_count, manifest.manifest_csv_path())
+    usable = sum(1 for it in items if it.rights_tier in rights_mod.USABLE_TIERS)
+    log.info("search complete: %d total items (%d new, %d usable-rights) "
+             "written to %s", len(items), new_count, usable,
+             manifest.manifest_csv_path())
     return items
