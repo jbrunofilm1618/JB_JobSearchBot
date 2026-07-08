@@ -168,3 +168,94 @@ USER_AGENT = (
     "grid-archive-scraper/1.0 (filmmaker research; "
     "https://github.com/jbrunofilm1618/grid-archive-scraper)"
 )
+
+# --------------------------------------------------------------------------- #
+# Eras. The film has two chapters; each era swaps the date window, the query
+# matrix, the LOC/IA boosts that only make sense for its period, and the
+# creative brief the judge scores against. Select per run with `--era modern`
+# (no file editing needed — the default stays the 1930s-50s buildout).
+#
+# Items from different eras coexist in one manifest (ids never collide) and the
+# contact sheet groups them separately, so the whole film lives on one sheet.
+# --------------------------------------------------------------------------- #
+
+MODERN_CREATIVE_BRIEF = """\
+I am sourcing material for the modern chapter of a 60-second brand film about
+the American electric grid: the grid now needs MORE energy and SMARTER usage,
+and the imagery should show the incredible progress of humankind. I want:
+AI datacenters and server halls, robotics and automation, IoT and smart
+devices, EV charging stations, solar panel fields, wind turbines on land and
+offshore, modern transmission and grid control rooms — and fast-moving
+light trails from vehicles at night (long exposures) suggesting progress and
+energy in motion. Positive, forward-looking, awe register. Locked-off or slow-move
+compositions that can hold 1.5 to 2 seconds on screen. No decay, no disaster,
+no blackout imagery.
+Score each item 1 (irrelevant) to 5 (hero shot) for this specific film.
+"""
+
+ERAS = {
+    "golden_age": {
+        # The values already defined above ARE the golden-age defaults; this
+        # entry exists so `--era golden_age` can restore them after a modern run.
+        "START_DATE": START_DATE,
+        "END_DATE": END_DATE,
+        "QUERIES": list(QUERIES),
+        "CREATIVE_BRIEF": CREATIVE_BRIEF,
+        "LOC_COLLECTION_BOOSTS": list(LOC_COLLECTION_BOOSTS),
+        "LOC_CONTRIBUTOR_BOOSTS": list(LOC_CONTRIBUTOR_BOOSTS),
+        "IA_ALWAYS_INCLUDE_TITLES": list(IA_ALWAYS_INCLUDE_TITLES),
+    },
+    "modern": {
+        "START_DATE": "1995-01-01",
+        "END_DATE": "2026-12-31",
+        "QUERIES": [
+            # --- The digital revolution ---------------------------------- #
+            ("digital", "data center"),
+            ("digital", "server room"),
+            ("digital", "supercomputer"),
+            ("digital", "fiber optic"),
+            ("digital", "internet infrastructure"),
+            ("digital", "industrial robot"),
+            ("digital", "robotics"),
+            ("digital", "smart home IoT"),
+            # --- Clean energy at scale ------------------------------------ #
+            ("clean_energy", "solar farm"),
+            ("clean_energy", "photovoltaic array"),
+            ("clean_energy", "solar panel field"),
+            ("clean_energy", "wind turbine"),
+            ("clean_energy", "wind farm"),
+            ("clean_energy", "offshore wind"),
+            # --- The smarter, hungrier grid ------------------------------- #
+            ("grid_modern", "EV charging station"),
+            ("grid_modern", "electric vehicle charging"),
+            ("grid_modern", "smart meter"),
+            ("grid_modern", "battery energy storage"),
+            ("grid_modern", "high voltage transmission line"),
+            ("grid_modern", "power grid control room"),
+            # --- Energy in motion (light trails / long exposure) ---------- #
+            ("motion", "light trails traffic"),
+            ("motion", "long exposure highway night"),
+            ("motion", "city night timelapse"),
+        ],
+        "CREATIVE_BRIEF": MODERN_CREATIVE_BRIEF,
+        # Period boosts make no sense post-1995: FSA/OWI is 1935-44 and the
+        # REA film is 1940 — disable them so no requests are wasted.
+        "LOC_COLLECTION_BOOSTS": [],
+        "LOC_CONTRIBUTOR_BOOSTS": [],
+        "IA_ALWAYS_INCLUDE_TITLES": [],
+    },
+}
+
+#: names of the module globals an era is allowed to swap
+_ERA_KEYS = ("START_DATE", "END_DATE", "QUERIES", "CREATIVE_BRIEF",
+             "LOC_COLLECTION_BOOSTS", "LOC_CONTRIBUTOR_BOOSTS",
+             "IA_ALWAYS_INCLUDE_TITLES")
+
+
+def apply_era(name: str) -> None:
+    """Swap the era-dependent settings in place. Called by the CLI's --era flag
+    before any fetcher reads this module."""
+    if name not in ERAS:
+        raise SystemExit(f"unknown era {name!r} — valid: {', '.join(sorted(ERAS))}")
+    for key in _ERA_KEYS:
+        globals()[key] = ERAS[name][key]
