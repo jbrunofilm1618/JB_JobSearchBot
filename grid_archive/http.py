@@ -59,6 +59,12 @@ class HttpClient:
         delay = config.BASE_DELAY_SECONDS * (config.BACKOFF_FACTOR ** attempt)
         return min(delay, config.BACKOFF_CAP_SECONDS)
 
+    def _backoff_sleep(self, attempt: int) -> None:
+        # Sleep only when another attempt will actually follow — a terminal
+        # backoff right before raising is pure wasted wall-clock.
+        if attempt + 1 < config.MAX_RETRIES:
+            self._sleep(self._backoff(attempt))
+
     def get_json(self, url: str, params: Optional[dict] = None,
                  headers: Optional[dict] = None) -> dict:
         """GET a URL expecting JSON. Retries on 429 / CAPTCHA / transient error
@@ -79,22 +85,22 @@ class HttpClient:
             except requests.RequestException as exc:
                 last_exc = exc
                 log.warning("network error on %s: %s (attempt %d)", full, exc, attempt + 1)
-                self._sleep(self._backoff(attempt))
+                self._backoff_sleep(attempt)
                 continue
 
             if resp.status_code == 429:
                 log.warning("429 Too Many Requests on %s (attempt %d)", full, attempt + 1)
-                self._sleep(self._backoff(attempt))
+                self._backoff_sleep(attempt)
                 continue
 
             if _looks_like_captcha(resp):
                 log.warning("CAPTCHA/HTML interstitial on %s (attempt %d)", full, attempt + 1)
-                self._sleep(self._backoff(attempt))
+                self._backoff_sleep(attempt)
                 continue
 
             if resp.status_code >= 500:
                 log.warning("HTTP %d on %s (attempt %d)", resp.status_code, full, attempt + 1)
-                self._sleep(self._backoff(attempt))
+                self._backoff_sleep(attempt)
                 continue
 
             resp.raise_for_status()
@@ -104,7 +110,7 @@ class HttpClient:
                 # Non-JSON with a 200 and no CAPTCHA marker: treat as transient.
                 last_exc = exc
                 log.warning("non-JSON body on %s (attempt %d)", full, attempt + 1)
-                self._sleep(self._backoff(attempt))
+                self._backoff_sleep(attempt)
                 continue
 
         raise RateLimitedError(
@@ -125,8 +131,15 @@ class HttpClient:
                 with self.session.get(url, stream=True, timeout=120) as resp:
                     if resp.status_code == 429:
                         log.warning("429 on download %s (attempt %d)", url, attempt + 1)
-                        self._sleep(self._backoff(attempt))
+                        self._backoff_sleep(attempt)
                         continue
+                    # Permanent client errors (dead link, gone, forbidden) will
+                    # never succeed on retry — fail fast instead of burning
+                    # MAX_RETRIES rounds of backoff (~45s) per dead URL. Dead
+                    # links are routine across thousands of institutional hosts.
+                    if 400 <= resp.status_code < 500:
+                        raise RateLimitedError(
+                            f"HTTP {resp.status_code} (permanent) on {url}")
                     resp.raise_for_status()
 
                     clen = resp.headers.get("Content-Length")
@@ -152,6 +165,6 @@ class HttpClient:
                     return written
             except requests.RequestException as exc:
                 log.warning("download error on %s: %s (attempt %d)", url, exc, attempt + 1)
-                self._sleep(self._backoff(attempt))
+                self._backoff_sleep(attempt)
                 continue
         raise RateLimitedError(f"gave up downloading {url}")

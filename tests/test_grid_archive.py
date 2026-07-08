@@ -547,6 +547,33 @@ def test_judge_labels_match_verdict_mapping_with_gaps():
     assert b.judge_score is None                          # skipped stays unjudged
 
 
+def test_download_fails_fast_on_404_no_retries():
+    """A dead link (4xx) must cost ONE attempt, not MAX_RETRIES rounds of backoff."""
+    from grid_archive.http import HttpClient, RateLimitedError
+
+    class Resp404:
+        status_code = 404
+        headers = {}
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    sleeps = []
+    client = HttpClient(sleep=lambda s: sleeps.append(s))
+    attempts = []
+    client.session = type("S", (), {
+        "get": lambda self, url, **kw: attempts.append(url) or Resp404(),
+        "headers": {},
+    })()
+
+    try:
+        client.download("https://dead.example/x.jpg", "/tmp/never-written.jpg")
+        assert False, "expected RateLimitedError"
+    except RateLimitedError as e:
+        assert "404" in str(e)
+    assert len(attempts) == 1                      # exactly one request
+    assert sum(sleeps) <= config.BASE_DELAY_SECONDS  # only the polite delay, no backoff
+
+
 def test_parse_sources_aliases_and_errors():
     assert parse_sources(None) is None
     assert parse_sources("") is None
