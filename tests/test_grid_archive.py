@@ -601,6 +601,31 @@ def test_dead_host_skipped_after_first_dns_failure():
         assert len(attempts) == expected_attempts
 
 
+def test_judge_sniffs_media_type_from_bytes_not_extension():
+    """PNG/GIF bytes behind a .jpg name must be declared honestly or skipped —
+    a single mislabeled image 400s the whole batch at the API."""
+    import grid_archive.judge as judge
+
+    with tempfile.TemporaryDirectory() as d:
+        png = os.path.join(d, "lies.jpg")   # PNG bytes, .jpg name
+        with open(png, "wb") as fh:
+            fh.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+        gif = os.path.join(d, "also_lies.jpg")
+        with open(gif, "wb") as fh:
+            fh.write(b"GIF89a" + b"\x00" * 16)
+        jpg = os.path.join(d, "honest.jpg")
+        with open(jpg, "wb") as fh:
+            fh.write(b"\xff\xd8\xff\xe0" + b"\x00" * 16)
+        junk = os.path.join(d, "junk.jpg")
+        with open(junk, "wb") as fh:
+            fh.write(b"not an image at all")
+
+        assert judge._image_block(png)["source"]["media_type"] == "image/png"
+        assert judge._image_block(gif)["source"]["media_type"] == "image/gif"
+        assert judge._image_block(jpg)["source"]["media_type"] == "image/jpeg"
+        assert judge._image_block(junk) is None   # skipped, not mislabeled
+
+
 def test_parse_sources_aliases_and_errors():
     assert parse_sources(None) is None
     assert parse_sources("") is None
