@@ -22,7 +22,25 @@ from . import manifest
 
 log = get_logger()
 
-_MEDIA_TYPE = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+# Magic-byte signatures -> media type. Archives routinely serve PNG/GIF bytes
+# from .jpg-named URLs, so the file EXTENSION is a lie and the API rejects any
+# batch whose declared type mismatches the actual bytes. Sniff, don't trust.
+_MAGIC_TYPES = [
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"RIFF", "image/webp"),  # verified below: RIFF....WEBP
+]
+
+
+def _sniff_media_type(data: bytes) -> Optional[str]:
+    for magic, mtype in _MAGIC_TYPES:
+        if data.startswith(magic):
+            if mtype == "image/webp" and data[8:12] != b"WEBP":
+                continue
+            return mtype
+    return None
 
 _INSTRUCTION = """\
 You are helping a filmmaker triage archival footage and photographs.
@@ -39,16 +57,19 @@ Respond with ONLY a JSON array, one object per item, no prose:
 
 
 def _image_block(path: str) -> Optional[dict]:
-    ext = os.path.splitext(path)[1].lower()
-    media_type = _MEDIA_TYPE.get(ext)
-    if not media_type or not os.path.exists(path):
+    if not os.path.exists(path):
         return None
     try:
         with open(path, "rb") as fh:
-            data = base64.standard_b64encode(fh.read()).decode("ascii")
+            raw = fh.read()
     except OSError as exc:
         log.warning("cannot read image %s: %s", path, exc)
         return None
+    media_type = _sniff_media_type(raw)
+    if media_type is None:
+        log.warning("unrecognized image format, skipping: %s", path)
+        return None
+    data = base64.standard_b64encode(raw).decode("ascii")
     return {"type": "image",
             "source": {"type": "base64", "media_type": media_type, "data": data}}
 
