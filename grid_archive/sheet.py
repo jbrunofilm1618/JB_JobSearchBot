@@ -22,9 +22,15 @@ from . import manifest
 log = get_logger()
 
 _GROUP_LABELS = [
+    # golden age (1930s-50s)
     ("rural", "Rural buildout"),
     ("urban", "Urban &amp; night"),
     ("big_machine", "Big machine / infrastructure"),
+    # modern era
+    ("digital", "Digital revolution"),
+    ("clean_energy", "Clean energy at scale"),
+    ("grid_modern", "The smarter grid"),
+    ("motion", "Energy in motion"),
 ]
 
 
@@ -154,13 +160,21 @@ _JS = """
 
 
 def render_sheet(items: List[Item]) -> str:
-    by_group = {k: [] for k, _ in _GROUP_LABELS}
+    by_group: dict = {}
     for it in items:
         by_group.setdefault(it.group, []).append(it)
 
+    # Known groups render in curated order with curated labels; any group key
+    # not listed (a user-added query group) still renders, with a label derived
+    # from the key — nothing is ever silently hidden. Empty groups are skipped.
+    known = [k for k, _ in _GROUP_LABELS]
+    labels = dict(_GROUP_LABELS)
+    ordered = [k for k in known if by_group.get(k)] + \
+              sorted(k for k in by_group if k not in known)
     sections = "\n".join(
-        _group_section(k, label, by_group.get(k, []))
-        for k, label in _GROUP_LABELS)
+        _group_section(k, labels.get(k, html.escape(k.replace("_", " ").title())),
+                       by_group[k])
+        for k in ordered)
 
     total = len(items)
     photos = sum(1 for it in items if it.format == "photo")

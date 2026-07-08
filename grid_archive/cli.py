@@ -56,9 +56,13 @@ def build_parser() -> argparse.ArgumentParser:
     sources_help = ("only hit these sources, comma-separated: loc, ia, wikimedia, "
                     "nara, dpla (default: all). Existing manifest rows from other "
                     "sources are kept untouched.")
+    era_help = ("which chapter to work in: 'golden_age' (1930-1959 buildout, "
+                "default) or 'modern' (1995+ — datacenters, EV, solar, wind, "
+                "light trails). Swaps dates, queries, and the judge brief.")
 
     se = sub.add_parser("search", help="run the query matrix and write the manifest")
     se.add_argument("--sources", help=sources_help)
+    se.add_argument("--era", help=era_help)
 
     pv = sub.add_parser("preview", help="download previews/clips and sample frames")
     pv.add_argument("--max-clip-mb", type=int, default=config.MAX_CLIP_MB,
@@ -70,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     jd = sub.add_parser("judge", help="score items against the brief via Claude")
     jd.add_argument("--rejudge", action="store_true",
                     help="re-score items that already have a judge score")
+    jd.add_argument("--era", help=era_help)
 
     fm = sub.add_parser("fetch-masters", help="pull highest-res assets for selected ids")
     fm.add_argument("--ids", nargs="*", help="item ids to fetch (e.g. loc:2017... ia:...)")
@@ -78,6 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     rn = sub.add_parser("run", help="search -> preview -> sheet")
     rn.add_argument("--max-clip-mb", type=int, default=config.MAX_CLIP_MB)
     rn.add_argument("--sources", help=sources_help)
+    rn.add_argument("--era", help=era_help)
 
     return p
 
@@ -115,6 +121,9 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     use_cache = not args.no_cache
     sources = parse_sources(getattr(args, "sources", None))
+    era = getattr(args, "era", None)
+    if era:
+        config.apply_era(era)
 
     if args.command == "search":
         from .search import run_search

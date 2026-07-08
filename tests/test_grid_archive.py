@@ -626,6 +626,39 @@ def test_judge_sniffs_media_type_from_bytes_not_extension():
         assert judge._image_block(junk) is None   # skipped, not mislabeled
 
 
+def test_apply_era_swaps_and_restores():
+    try:
+        config.apply_era("modern")
+        assert config.START_DATE == "1995-01-01"
+        assert config.LOC_CONTRIBUTOR_BOOSTS == []       # FSA boosts off post-1995
+        assert config.IA_ALWAYS_INCLUDE_TITLES == []
+        assert any(g == "clean_energy" for g, _ in config.QUERIES)
+        assert "light trails" in config.CREATIVE_BRIEF
+        try:
+            config.apply_era("bronze_age")
+            assert False, "expected SystemExit"
+        except SystemExit:
+            pass
+    finally:
+        config.apply_era("golden_age")
+    assert config.START_DATE == "1930-01-01"
+    assert config.IA_ALWAYS_INCLUDE_TITLES == ["Power and the Land"]
+    assert any("lange" in c for c in config.LOC_CONTRIBUTOR_BOOSTS)
+
+
+def test_sheet_renders_modern_and_unknown_groups():
+    items = [
+        Item(item_id="wc:1", source="WIKIMEDIA", format="photo", group="clean_energy",
+             title="Wind farm at dusk", item_page_url="https://x/1"),
+        Item(item_id="wc:2", source="WIKIMEDIA", format="photo", group="my_custom_group",
+             title="Custom bucket item", item_page_url="https://x/2"),
+    ]
+    out = sheet.render_sheet(items)
+    assert "Clean energy at scale" in out
+    assert "My Custom Group" in out      # unknown keys render, never hidden
+    assert "Rural buildout" not in out   # empty groups are skipped
+
+
 def test_parse_sources_aliases_and_errors():
     assert parse_sources(None) is None
     assert parse_sources("") is None
