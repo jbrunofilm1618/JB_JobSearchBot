@@ -158,10 +158,16 @@ def run_judge(rejudge: bool = False) -> List[Item]:
         log.warning("no manifest found; run `search` and `preview` first")
         return []
 
+    from .rights import ensure_tier, HARD_GATED_TIERS
+
     client = anthropic.Anthropic()
-    todo = [it for it in items if (rejudge or it.judge_score is None) and _item_images(it)]
-    log.info("judging %d items (%d already scored, skipped)",
-             len(todo), len(items) - len(todo))
+    gated = [it for it in items if ensure_tier(it) in HARD_GATED_TIERS]
+    todo = [it for it in items
+            if it.rights_tier not in HARD_GATED_TIERS
+            and (rejudge or it.judge_score is None) and _item_images(it)]
+    log.info("judging %d items (%d already scored/skipped, %d rights-gated "
+             "— NC/ND/SA/in-copyright items are never scored)",
+             len(todo), len(items) - len(todo) - len(gated), len(gated))
 
     batch_size = config.JUDGE_ITEMS_PER_REQUEST
     for start in range(0, len(todo), batch_size):

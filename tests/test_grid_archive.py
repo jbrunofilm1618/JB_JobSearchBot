@@ -659,6 +659,62 @@ def test_sheet_renders_modern_and_unknown_groups():
     assert "Rural buildout" not in out   # empty groups are skipped
 
 
+def test_rights_classifier_tiers():
+    from grid_archive.rights import classify_rights as c
+    # public domain family
+    assert c("No known restrictions on publication.") == "public_domain"
+    assert c("http://creativecommons.org/publicdomain/mark/1.0/") == "public_domain"
+    assert c("CC0") == "public_domain"
+    assert c("http://rightsstatements.org/vocab/NoC-US/1.0/") == "public_domain"
+    assert c("Copyrighted free use") == "public_domain"
+    # attribution
+    assert c("https://creativecommons.org/licenses/by/4.0/") == "attribution"
+    assert c("CC BY 2.0") == "attribution"
+    # gated: share-alike and restricted (the NC hole, closed)
+    assert c("https://creativecommons.org/licenses/by-sa/4.0/") == "share_alike"
+    assert c("https://creativecommons.org/licenses/by-nc/2.0/") == "restricted"
+    assert c("CC BY-NC-ND 4.0") == "restricted"
+    assert c("http://rightsstatements.org/vocab/InC/1.0/") == "restricted"
+    assert c("All rights reserved") == "restricted"
+    # unknown
+    assert c("") == "unknown"
+    assert c("see provider") == "unknown"
+    assert c("unspecified") == "unknown"
+
+
+def test_wikimedia_free_only_now_blocks_nc():
+    payload = {"query": {"pages": {"9": {"pageid": 9, "title": "File:nc.jpg",
+        "imageinfo": [{"url": "u.jpg", "mediatype": "BITMAP",
+                       "extmetadata": {"DateTimeOriginal": {"value": "1998"},
+                                       "LicenseShortName": {"value": "CC BY-NC 2.0"},
+                                       "LicenseUrl": {"value": "https://creativecommons.org/licenses/by-nc/2.0/"}}}]}}}}
+    f = WikimediaFetcher(FakeClient([payload]), use_cache=False)
+    assert list(f.search("q", "photo", "digital")) == []   # NC no longer leaks
+
+
+def test_sheet_rights_badges_and_usable_toggle():
+    items = [
+        Item(item_id="loc:1", source="LOC", format="photo", group="rural",
+             rights="No known restrictions on publication."),
+        Item(item_id="wc:2", source="WIKIMEDIA", format="photo", group="rural",
+             rights="CC BY-NC 2.0 (https://creativecommons.org/licenses/by-nc/2.0/)"),
+    ]
+    out = sheet.render_sheet(items)
+    assert 'data-usable="1"' in out and 'data-usable="0"' in out
+    assert 'class="tier public_domain"' in out
+    assert 'class="tier restricted"' in out
+    assert 'id="usable"' in out
+
+
+def test_ensure_tier_backfills_old_rows():
+    from grid_archive.rights import ensure_tier
+    it = Item(item_id="ia:x", source="IA", format="film", group="rural",
+              rights="http://creativecommons.org/publicdomain/mark/1.0/")
+    assert it.rights_tier == ""
+    assert ensure_tier(it) == "public_domain"
+    assert it.rights_tier == "public_domain"   # cached on the item
+
+
 def test_parse_sources_aliases_and_errors():
     assert parse_sources(None) is None
     assert parse_sources("") is None

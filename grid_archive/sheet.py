@@ -17,6 +17,7 @@ from typing import List
 import config
 from .logging_setup import get_logger
 from .models import Item
+from .rights import ensure_tier, USABLE_TIERS
 from . import manifest
 
 log = get_logger()
@@ -34,12 +35,25 @@ _GROUP_LABELS = [
 ]
 
 
+_TIER_BADGES = {
+    "public_domain": ("PD", "free to use"),
+    "attribution": ("CC-BY", "usable with credit"),
+    "share_alike": ("SA", "gated: share-alike terms"),
+    "restricted": ("NO", "gated: NC/ND/in-copyright"),
+    "unknown": ("?", "verify rights before use"),
+}
+
+
 def _card_html(item: Item) -> str:
     title = html.escape(item.title or "(untitled)")
     date = html.escape(item.date or "n.d.")
     creator = html.escape(item.creator or "unknown")
     rights = html.escape(item.rights or "unspecified")
     page = html.escape(item.item_page_url or "#")
+    tier = ensure_tier(item)
+    badge_text, badge_hint = _TIER_BADGES.get(tier, ("?", "verify"))
+    tier_badge = (f'<span class="tier {tier}" title="{badge_hint}">'
+                  f'{badge_text}</span>')
     score = "" if item.judge_score is None else str(item.judge_score)
     score_badge = f'<span class="score">★ {score}</span>' if score else ""
     reason = html.escape(item.judge_reason or "")
@@ -65,12 +79,13 @@ def _card_html(item: Item) -> str:
 
     keep = "1" if item.judge_keep else "0"
     sort_score = item.judge_score if item.judge_score is not None else -1
+    usable = "1" if tier in USABLE_TIERS else "0"
 
     return f"""
-    <figure class="card" data-format="{item.format}" data-shortlist="{keep}" data-score="{sort_score}">
+    <figure class="card" data-format="{item.format}" data-shortlist="{keep}" data-score="{sort_score}" data-usable="{usable}">
       <a href="{page}" target="_blank" rel="noopener">{media}</a>
       <figcaption>
-        <div class="badges">{fmt_badge}{dur}{score_badge}{note_badge}</div>
+        <div class="badges">{fmt_badge}{tier_badge}{dur}{score_badge}{note_badge}</div>
         <div class="title"><a href="{page}" target="_blank" rel="noopener">{title}</a></div>
         <div class="meta">{date} &middot; {creator}</div>
         <div class="rights">{rights}</div>
@@ -122,6 +137,12 @@ _CSS = """
   .dur { font-size: 11px; color: #9a9aa3; }
   .score { font-size: 11px; color: #ffd479; }
   .note { font-size: 11px; color: #ff8a8a; }
+  .tier { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+  .tier.public_domain { background: #1d3d2a; color: #7fe0a7; }
+  .tier.attribution { background: #1d3347; color: #8ec9ff; }
+  .tier.share_alike { background: #4d3a1d; color: #ffcf8a; }
+  .tier.restricted { background: #4d1d1d; color: #ff9a9a; }
+  .tier.unknown { background: #3a3a42; color: #c2c2cc; }
   .title { font-weight: 600; font-size: 14px; }
   .title a:hover { text-decoration: underline; }
   .meta { color: #b6b6bd; font-size: 12px; }
@@ -132,7 +153,7 @@ _CSS = """
 """
 
 _JS = """
-  const state = { fmt: 'all', sort: 'group', shortlistOnly: false };
+  const state = { fmt: 'all', sort: 'group', shortlistOnly: false, usableOnly: false };
   function apply() {
     document.querySelectorAll('.group').forEach(group => {
       const grid = group.querySelector('.grid');
@@ -141,7 +162,8 @@ _JS = """
       cards.forEach(c => {
         const okFmt = state.fmt === 'all' || c.dataset.format === state.fmt;
         const okShort = !state.shortlistOnly || c.dataset.shortlist === '1';
-        const show = okFmt && okShort;
+        const okRights = !state.usableOnly || c.dataset.usable === '1';
+        const show = okFmt && okShort && okRights;
         c.style.display = show ? '' : 'none';
         if (show) visible++;
       });
@@ -155,6 +177,7 @@ _JS = """
   document.getElementById('fmt').addEventListener('change', e => { state.fmt = e.target.value; apply(); });
   document.getElementById('sort').addEventListener('change', e => { state.sort = e.target.value; apply(); });
   document.getElementById('shortlist').addEventListener('change', e => { state.shortlistOnly = e.target.checked; apply(); });
+  document.getElementById('usable').addEventListener('change', e => { state.usableOnly = e.target.checked; apply(); });
   apply();
 """
 
@@ -205,6 +228,7 @@ def render_sheet(items: List[Item]) -> str:
         </select>
       </label>
       <label><input type="checkbox" id="shortlist"> shortlist only</label>
+      <label><input type="checkbox" id="usable"> usable rights only (PD + CC-BY)</label>
     </div>
   </header>
   <main>{sections}</main>
