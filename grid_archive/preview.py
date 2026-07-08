@@ -209,11 +209,16 @@ class Previewer:
 
 
 def _preview_source(source: str, its: List[Item], max_clip_mb: int,
-                    use_cache: bool) -> str:
+                    use_cache: bool, stop_event) -> str:
     """Preview one source's items on its own thread with its own Previewer
-    (own HttpClient), so polite pacing is per host and sources overlap."""
+    (own HttpClient), so polite pacing is per host and sources overlap.
+    Checks stop_event between items so Ctrl+C ends the run promptly instead of
+    the thread grinding on to the end of its list."""
     previewer = Previewer(max_clip_mb, use_cache=use_cache)
     for i, item in enumerate(its, 1):
+        if stop_event.is_set():
+            log.info("preview[%s]: stopped at %d/%d", source, i - 1, len(its))
+            return source
         previewer.preview_item(item)
         if i % 25 == 0:
             log.info("preview[%s]: %d/%d", source, i, len(its))
@@ -222,6 +227,7 @@ def _preview_source(source: str, its: List[Item], max_clip_mb: int,
 
 def run_preview(max_clip_mb: int, use_cache: bool = True,
                 sources: Optional[set] = None) -> List[Item]:
+    import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     items = manifest.load_items()
@@ -235,17 +241,20 @@ def run_preview(max_clip_mb: int, use_cache: bool = True,
             continue  # --sources filter: other rows stay untouched in the manifest
         by_source.setdefault(it.source, []).append(it)
 
+    stop_event = threading.Event()
     executor = ThreadPoolExecutor(max_workers=max(1, len(by_source)))
     try:
-        futures = {executor.submit(_preview_source, src, its, max_clip_mb, use_cache): src
+        futures = {executor.submit(_preview_source, src, its, max_clip_mb,
+                                   use_cache, stop_event): src
                    for src, its in by_source.items()}
         for fut in as_completed(futures):
             source = fut.result()
             manifest.save_items(items)  # checkpoint as each source finishes
             log.info("preview[%s] complete (checkpointed)", source)
     except KeyboardInterrupt:
+        stop_event.set()  # workers bail after their current item
         manifest.save_items(items)
-        log.warning("interrupted — partial preview state saved")
+        log.warning("interrupted — partial preview state saved; workers stopping")
         raise
     finally:
         executor.shutdown(wait=False, cancel_futures=True)

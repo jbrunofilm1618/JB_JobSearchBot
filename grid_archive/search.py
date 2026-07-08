@@ -71,12 +71,16 @@ def fetcher_map(client: HttpClient, use_cache: bool) -> Dict[str, Fetcher]:
     return {f.source: f for f in build_fetchers(client, use_cache)}
 
 
-def _drain_source(fetcher: Fetcher) -> List[Item]:
+def _drain_source(fetcher: Fetcher, stop_event) -> List[Item]:
     """Run the full query matrix against one source. Executed on its own thread
     with its own HttpClient, so the polite 1.5s pacing applies per host — the
-    wall clock for a cold search is the slowest source, not the sum of all."""
+    wall clock for a cold search is the slowest source, not the sum of all.
+    Checks stop_event between queries so Ctrl+C ends the run promptly."""
     found: List[Item] = []
     for group, query in config.QUERIES:
+        if stop_event.is_set():
+            log.info("search[%s]: stopped early", fetcher.source)
+            return found
         for media_type in MEDIA_TYPES:
             try:
                 found.extend(fetcher.search(query, media_type, group))
@@ -99,9 +103,12 @@ def run_search(use_cache: bool = True, sources: Optional[set] = None) -> List[It
     by_id: Dict[str, Item] = manifest.index_by_id(existing)
     new_count = 0
 
+    import threading
+    stop_event = threading.Event()
     executor = ThreadPoolExecutor(max_workers=max(1, len(fetchers)))
     try:
-        futures = {executor.submit(_drain_source, f): f.source for f in fetchers}
+        futures = {executor.submit(_drain_source, f, stop_event): f.source
+                   for f in fetchers}
         for fut in as_completed(futures):
             source = futures[fut]
             added = 0
@@ -115,9 +122,9 @@ def run_search(use_cache: bool = True, sources: Optional[set] = None) -> List[It
             manifest.save_items(list(by_id.values()))
             log.info("source %s complete: +%d new (checkpointed)", source, added)
     except KeyboardInterrupt:
+        stop_event.set()  # workers bail after their current query
         manifest.save_items(list(by_id.values()))
-        log.warning("interrupted — partial manifest saved; in-flight source "
-                    "threads will wind down")
+        log.warning("interrupted — partial manifest saved; workers stopping")
         raise
     finally:
         executor.shutdown(wait=False, cancel_futures=True)

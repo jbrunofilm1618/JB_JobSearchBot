@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 import time
 from typing import Optional
+from urllib.parse import urlsplit
 
 import requests
 
@@ -50,10 +51,28 @@ class HttpClient:
     `sleep` is injectable so tests can run without real delays.
     """
 
+    #: substrings identifying a DNS failure — the host is gone, not busy.
+    _DNS_FAILURE_MARKERS = ("failed to resolve", "nameresolutionerror",
+                            "nodename nor servname", "name or service not known")
+
     def __init__(self, sleep=time.sleep):
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": config.USER_AGENT})
         self._sleep = sleep
+        # Hosts that failed DNS this run. A domain that doesn't resolve won't
+        # start resolving mid-run, and one dead DPLA contributor host can back
+        # hundreds of items — skip it after the first failure.
+        self._dead_hosts: set = set()
+
+    def _check_dead_host(self, url: str) -> str:
+        host = urlsplit(url).netloc.lower()
+        if host in self._dead_hosts:
+            raise RateLimitedError(f"host {host} failed DNS earlier this run — skipping {url}")
+        return host
+
+    def _is_dns_failure(self, exc: Exception) -> bool:
+        text = str(exc).lower()
+        return any(m in text for m in self._DNS_FAILURE_MARKERS)
 
     def _backoff(self, attempt: int) -> float:
         delay = config.BASE_DELAY_SECONDS * (config.BACKOFF_FACTOR ** attempt)
@@ -73,6 +92,7 @@ class HttpClient:
         `headers` are per-request extras (e.g. a source-specific API key) — they
         are NOT installed on the shared session, so keys never leak to other
         hosts."""
+        host = self._check_dead_host(url)
         last_exc: Optional[Exception] = None
         for attempt in range(config.MAX_RETRIES):
             # Polite constant delay before every request.
@@ -83,6 +103,11 @@ class HttpClient:
                 resp = self.session.get(url, params=params, headers=headers,
                                         timeout=60)
             except requests.RequestException as exc:
+                if self._is_dns_failure(exc):
+                    self._dead_hosts.add(host)
+                    log.warning("DNS failure for %s — skipping this host for "
+                                "the rest of the run", host)
+                    raise RateLimitedError(f"host {host} does not resolve") from exc
                 last_exc = exc
                 log.warning("network error on %s: %s (attempt %d)", full, exc, attempt + 1)
                 self._backoff_sleep(attempt)
@@ -124,6 +149,7 @@ class HttpClient:
         keeping a partial file. Returns bytes written, or -1 if skipped."""
         import os
 
+        host = self._check_dead_host(url)
         self._sleep(config.BASE_DELAY_SECONDS)
         log.info("GET (download) %s", _redact(url))
         for attempt in range(config.MAX_RETRIES):
@@ -164,6 +190,11 @@ class HttpClient:
                     os.replace(tmp, dest_path)
                     return written
             except requests.RequestException as exc:
+                if self._is_dns_failure(exc):
+                    self._dead_hosts.add(host)
+                    log.warning("DNS failure for %s — skipping this host for "
+                                "the rest of the run", host)
+                    raise RateLimitedError(f"host {host} does not resolve") from exc
                 log.warning("download error on %s: %s (attempt %d)", url, exc, attempt + 1)
                 self._backoff_sleep(attempt)
                 continue

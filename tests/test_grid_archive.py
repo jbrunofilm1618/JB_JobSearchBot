@@ -574,6 +574,33 @@ def test_download_fails_fast_on_404_no_retries():
     assert sum(sleeps) <= config.BASE_DELAY_SECONDS  # only the polite delay, no backoff
 
 
+def test_dead_host_skipped_after_first_dns_failure():
+    """One DNS failure marks the host dead; later URLs on it are skipped with
+    zero network attempts (a dead DPLA contributor can back hundreds of items)."""
+    import requests as _requests
+    from grid_archive.http import HttpClient, RateLimitedError
+
+    client = HttpClient(sleep=lambda s: None)
+    attempts = []
+
+    def dying_get(self, url, **kw):
+        attempts.append(url)
+        raise _requests.ConnectionError(
+            "Failed to resolve 'thumbnails.calisphere.org' "
+            "([Errno 8] nodename nor servname provided, or not known)")
+
+    client.session = type("S", (), {"get": dying_get, "headers": {}})()
+
+    for expected_attempts in (1, 1):  # second call: no new attempt at all
+        try:
+            client.download("https://thumbnails.calisphere.org/clip/a.jpg",
+                            "/tmp/never.jpg")
+            assert False, "expected RateLimitedError"
+        except RateLimitedError:
+            pass
+        assert len(attempts) == expected_attempts
+
+
 def test_parse_sources_aliases_and_errors():
     assert parse_sources(None) is None
     assert parse_sources("") is None
