@@ -897,5 +897,68 @@ class TestFlagRules(unittest.TestCase):
         self.assertEqual(dup2.status, "dismissed")
 
 
+# --------------------------------------------------------------------------- #
+# Report rendering
+# --------------------------------------------------------------------------- #
+
+from expense_report.report import render_html, run_report
+
+
+class TestReport(unittest.TestCase):
+    def _ledger(self):
+        ledger = store.Ledger()
+        t = T()
+        r = R(message_id="<rep1@x>",
+              line_items=[{"description": "USB <cable>", "quantity": 2,
+                           "amount_cents": 2997}])
+        t.matched_receipt_id = r.receipt_id
+        r.matched_txn_ids = [t.txn_id]
+        ledger.transactions = [t, T(date="2026-07-04", merchant="NETFLIX",
+                                    amount_cents=1549, description="N")]
+        ledger.receipts = [r]
+        ledger.flags = [Flag(rule="DUPLICATE_CHARGE", kind="redundancy",
+                             severity="warn", txn_ids=[t.txn_id],
+                             detail="test <detail>")]
+        return ledger
+
+    def test_render_html_content(self):
+        page = render_html(self._ledger())
+        self.assertIn("<!doctype html>", page)
+        self.assertIn("DUPLICATE_CHARGE", page)
+        self.assertIn("AMAZON", page)
+        self.assertIn("$59.94", page)
+        self.assertIn("USB &lt;cable&gt;", page)          # escaped
+        self.assertIn("test &lt;detail&gt;", page)
+        self.assertIn('data-month="2026-07"', page)
+        self.assertIn("expense-report dismiss", page)     # dismissal hint
+        self.assertNotIn("<cable>", page)                 # nothing unescaped
+
+    def test_dismissed_flags_hidden(self):
+        ledger = self._ledger()
+        ledger.flags[0].status = "dismissed"
+        page = render_html(ledger)
+        self.assertNotIn("DUPLICATE_CHARGE", page)
+        self.assertIn("Nothing flagged", page)
+
+    def test_superseded_alerts_excluded_from_report(self):
+        ledger = self._ledger()
+        ledger.transactions.append(T(source="alert", superseded_by="amex:x",
+                                     merchant="GHOST", description="G"))
+        page = render_html(ledger)
+        self.assertNotIn("GHOST", page)
+
+    def test_run_report_writes_files(self):
+        ledger = self._ledger()
+        store.save_ledger(ledger)
+        run_report()
+        base = config.data_path(config.REPORTS_DIRNAME)
+        for name in ("expense_report.html", "report.json", "report.csv"):
+            self.assertTrue(os.path.exists(os.path.join(base, name)), name)
+        with open(os.path.join(base, "report.csv")) as fh:
+            content = fh.read()
+        self.assertIn("DUPLICATE_CHARGE", content)
+        self.assertIn("AMAZON", content)
+
+
 if __name__ == "__main__":
     unittest.main()
