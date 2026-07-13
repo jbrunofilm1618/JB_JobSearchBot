@@ -1,5 +1,9 @@
 # grid-archive-scraper
 
+> This repo also hosts **expense-report**, an itemized expense report builder
+> that scans iCloud/Gmail receipts and Amex/Capital One statements with
+> redundancy + fraud flagging. See [EXPENSE_REPORT.md](EXPENSE_REPORT.md).
+
 Source archival **photos and film of the American electric grid being built** —
 rural electrification and big-city power, roughly **1930–1959** — from the
 **Library of Congress** and the **Internet Archive**, into a reviewable

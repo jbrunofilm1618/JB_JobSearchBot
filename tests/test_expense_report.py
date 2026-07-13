@@ -1025,5 +1025,102 @@ class TestPdfCrossVerify(unittest.TestCase):
         self.assertIsNone(st.total_new_charges)
 
 
+# --------------------------------------------------------------------------- #
+# Optional LLM passes (FakeAnthropic — no network, no key)
+# --------------------------------------------------------------------------- #
+
+import json as jsonlib
+from types import SimpleNamespace
+
+from expense_report import llm
+
+
+class FakeAnthropic:
+    """Returns queued reply strings; records prompts."""
+
+    def __init__(self, replies):
+        self._replies = list(replies)
+        self.prompts = []
+        self.messages = SimpleNamespace(create=self._create)
+
+    def _create(self, **kw):
+        self.prompts.append(kw["messages"][0]["content"])
+        text = self._replies.pop(0) if self._replies else "[]"
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)])
+
+
+class TestLlmPasses(unittest.TestCase):
+    def _receipt_with_cached_body(self, subject="Your order",
+                                  body="Thanks! We charged you."):
+        msg = make_email("orders@somewhere.com", subject, body,
+                         message_id=f"<llm-{subject}@x>")
+        raw = msg.as_bytes()
+        path = os.path.join(_TMP, f"llm-{abs(hash(subject))}.eml")
+        with open(path, "wb") as fh:
+            fh.write(raw)
+        r = Receipt(message_id=str(msg["Message-ID"]), account="icloud",
+                    email_date="2026-07-01", subject=subject,
+                    from_addr="orders@somewhere.com",
+                    extraction_method="none", body_cache_path=path)
+        return r
+
+    def test_extraction_fills_unparsed_receipt(self):
+        r = self._receipt_with_cached_body()
+        reply = jsonlib.dumps([{
+            "email": 1, "merchant": "Somewhere Shop", "order_id": "SW-123",
+            "total": "42.00", "tax": "3.50",
+            "line_items": [{"description": "Widget", "quantity": 2,
+                            "amount": "42.00"}],
+        }])
+        client = FakeAnthropic([reply])
+        llm._extract_batch(client, [r])
+        self.assertEqual(r.total_cents, 4200)
+        self.assertEqual(r.order_id, "SW-123")
+        self.assertEqual(r.tax_cents, 350)
+        self.assertEqual(r.line_items[0]["description"], "Widget")
+        self.assertEqual(r.extraction_method, "llm")
+
+    def test_rules_total_wins_on_disagreement(self):
+        r = self._receipt_with_cached_body(subject="rules-won")
+        r.total_cents = 5000
+        r.extraction_method = "rules"
+        reply = jsonlib.dumps([{"email": 1, "merchant": "X", "total": "49.00"}])
+        llm._extract_batch(FakeAnthropic([reply]), [r])
+        self.assertEqual(r.total_cents, 5000)                 # unchanged
+        self.assertIn("disagreed", r.extraction_note)
+
+    def test_garbage_reply_is_survivable(self):
+        r = self._receipt_with_cached_body(subject="garbage")
+        llm._extract_batch(FakeAnthropic(["I cannot help with that."]), [r])
+        self.assertIsNone(r.total_cents)
+        self.assertEqual(r.extraction_method, "none")         # still LLM-eligible
+
+    def test_flag_review_sets_verdict(self):
+        ledger = store.Ledger()
+        t = T()
+        ledger.transactions = [t]
+        f = Flag(rule="DUPLICATE_CHARGE", kind="redundancy", severity="warn",
+                 txn_ids=[t.txn_id], detail="dup?")
+        reply = jsonlib.dumps([{"flag": 1, "concerning": False,
+                                "reason": "looks like a normal repurchase"}])
+        client = FakeAnthropic([reply])
+        llm._review_batch(client, [f], ledger)
+        self.assertTrue(f.llm_reviewed)
+        self.assertFalse(f.llm_agrees)
+        self.assertIn("repurchase", f.llm_reason)
+        # merchant history table made it into the prompt
+        self.assertIn("History with AMAZON", client.prompts[0])
+
+    def test_no_key_degrades_to_noop(self):
+        old = os.environ.pop("ANTHROPIC_API_KEY", None)
+        try:
+            self.assertIsNone(llm._client())
+            llm.run_llm_extraction()      # must not raise
+            llm.run_llm_flag_review()     # must not raise
+        finally:
+            if old:
+                os.environ["ANTHROPIC_API_KEY"] = old
+
+
 if __name__ == "__main__":
     unittest.main()
