@@ -581,5 +581,132 @@ class TestImapScan(unittest.TestCase):
                          '"My Receipts"')
 
 
+# --------------------------------------------------------------------------- #
+# Matching
+# --------------------------------------------------------------------------- #
+
+from expense_report.match import match_ledger, score_pair, merchant_similarity
+
+
+def T(**kw):
+    base = dict(provider="amex", source="csv", date="2026-07-03",
+                merchant="AMAZON", description="AMZN MKTP US*A12BC3",
+                amount_cents=5994)
+    base.update(kw)
+    return Transaction(**base)
+
+
+def R(**kw):
+    base = dict(message_id=f"<{kw.get('subject', 'r')}-{len(kw)}@x>",
+                account="icloud", email_date="2026-07-01", merchant="AMAZON",
+                from_domain="amazon.com", subject="Your order",
+                total_cents=5994)
+    base.update(kw)
+    return Receipt(**base)
+
+
+class TestMatching(unittest.TestCase):
+    def test_exact_match_links(self):
+        ledger = store.Ledger()
+        t, r = T(), R(message_id="<m1@x>")
+        ledger.transactions, ledger.receipts = [t], [r]
+        match_ledger(ledger)
+        self.assertEqual(t.matched_receipt_id, r.receipt_id)
+        self.assertEqual(t.match_method, "exact")
+        self.assertEqual(r.matched_txn_ids, [t.txn_id])
+
+    def test_amount_mismatch_never_matches(self):
+        ledger = store.Ledger()
+        t, r = T(amount_cents=9999), R(message_id="<m2@x>")
+        ledger.transactions, ledger.receipts = [t], [r]
+        match_ledger(ledger)
+        self.assertEqual(t.matched_receipt_id, "")
+
+    def test_near_amount_fuzzy_match(self):
+        # $0.87 off on a $59.94 receipt: within max($1, 1%)
+        t, r = T(amount_cents=6081), R(message_id="<m3@x>")
+        s = score_pair(r, t)
+        self.assertIsNotNone(s)
+        self.assertGreaterEqual(s, config.MATCH_THRESHOLD)
+        ledger = store.Ledger()
+        ledger.transactions, ledger.receipts = [t], [r]
+        match_ledger(ledger)
+        self.assertEqual(t.match_method, "fuzzy")
+
+    def test_date_window_edges(self):
+        r = R(message_id="<m4@x>", email_date="2026-07-10")
+        inside_late = T(date="2026-07-15")     # +5 days: allowed
+        outside = T(date="2026-07-16")         # +6 days: not
+        inside_early = T(date="2026-07-07")    # -3 days: allowed (pre-auth)
+        too_early = T(date="2026-07-06")
+        self.assertIsNotNone(score_pair(r, inside_late))
+        self.assertIsNone(score_pair(r, outside))
+        self.assertIsNotNone(score_pair(r, inside_early))
+        self.assertIsNone(score_pair(r, too_early))
+
+    def test_greedy_prefers_best_and_flags_ambiguity(self):
+        # Two same-amount same-merchant txns a day apart -> whichever wins,
+        # the runner-up is within the margin -> ambiguous reported.
+        ledger = store.Ledger()
+        t1, t2 = T(date="2026-07-02"), T(date="2026-07-03",
+                                         description="AMZN MKTP US*ZZZ")
+        r = R(message_id="<m5@x>")
+        ledger.transactions, ledger.receipts = [t1, t2], [r]
+        diag = match_ledger(ledger)
+        self.assertEqual(len(diag["ambiguous"]), 1)
+        self.assertEqual(t1.matched_receipt_id, r.receipt_id)   # closer date wins
+        self.assertEqual(t2.matched_receipt_id, "")
+
+    def test_split_shipment_reconstruction(self):
+        ledger = store.Ledger()
+        parts = [T(amount_cents=1999, description="AMZN A"),
+                 T(amount_cents=3995, description="AMZN B", date="2026-07-04")]
+        r = R(message_id="<m6@x>", total_cents=5994)
+        ledger.transactions, ledger.receipts = parts, [r]
+        match_ledger(ledger)
+        self.assertEqual(r.matched_txn_ids,
+                         [parts[0].txn_id, parts[1].txn_id])
+        self.assertTrue(all(t.match_method == "split" for t in parts))
+
+    def test_refund_pairs_with_refund_receipt_only(self):
+        refund_txn = T(amount_cents=-2500, description="REFUND TARGET",
+                       merchant="TARGET")
+        normal_receipt = R(message_id="<m7@x>", merchant="TARGET",
+                           total_cents=2500, from_domain="target.com")
+        refund_receipt = R(message_id="<m8@x>", merchant="TARGET",
+                           total_cents=2500, from_domain="target.com",
+                           subject="Your refund is on its way")
+        self.assertIsNone(score_pair(normal_receipt, refund_txn))
+        self.assertIsNotNone(score_pair(refund_receipt, refund_txn))
+
+    def test_superseded_alerts_excluded(self):
+        ledger = store.Ledger()
+        alert = T(source="alert", superseded_by="amex:zzz")
+        r = R(message_id="<m9@x>")
+        ledger.transactions, ledger.receipts = [alert], [r]
+        match_ledger(ledger)
+        self.assertEqual(alert.matched_receipt_id, "")
+
+    def test_rematch_clears_links(self):
+        ledger = store.Ledger()
+        t, r = T(), R(message_id="<m10@x>")
+        ledger.transactions, ledger.receipts = [t], [r]
+        match_ledger(ledger)
+        t.merchant = "SOMETHING ELSE ENTIRELY"
+        r2 = Receipt.from_dict(r.to_dict())
+        match_ledger(ledger, rematch=True)
+        # still matches on amount+date even with weak merchant? score drops:
+        # amount 0.55 + date ~0.11 + merchant ~0 = 0.66 < 0.75 -> unlinked
+        self.assertEqual(t.matched_receipt_id, "")
+        self.assertEqual(r.matched_txn_ids, [])
+        del r2
+
+    def test_merchant_similarity_domain_hint(self):
+        r = R(message_id="<m11@x>", merchant="UBER RECEIPTS",
+              from_domain="uber.com")
+        t = T(merchant="UBER", description="UBER *TRIP HELP.UBER.COM")
+        self.assertEqual(merchant_similarity(r, t), 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()
