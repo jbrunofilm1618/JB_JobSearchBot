@@ -708,5 +708,194 @@ class TestMatching(unittest.TestCase):
         self.assertEqual(merchant_similarity(r, t), 1.0)
 
 
+# --------------------------------------------------------------------------- #
+# Flags
+# --------------------------------------------------------------------------- #
+
+from expense_report import flags as flagmod
+
+
+class TestFlagRules(unittest.TestCase):
+    def test_r1_duplicate_charge(self):
+        a = T(date="2026-07-03", description="X1")
+        b = T(date="2026-07-04", description="X2")
+        out = flagmod.rule_duplicate_charge([a, b])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].rule, "DUPLICATE_CHARGE")
+        self.assertEqual(out[0].severity, "warn")
+        # same-day duplicates are high severity
+        c = T(date="2026-07-03", description="X3")
+        out2 = flagmod.rule_duplicate_charge([a, c])
+        self.assertEqual(out2[0].severity, "high")
+
+    def test_r1_negative_far_apart_or_exempt(self):
+        a, b = T(date="2026-07-01"), T(date="2026-07-20", description="Y")
+        self.assertEqual(flagmod.rule_duplicate_charge([a, b]), [])
+        u1 = T(merchant="UBER", date="2026-07-01", amount_cents=1500)
+        u2 = T(merchant="UBER", date="2026-07-01", amount_cents=1500,
+               description="U2")
+        self.assertEqual(flagmod.rule_duplicate_charge([u1, u2]), [])
+
+    def test_r2_duplicate_receipt_by_order_id(self):
+        a = R(message_id="<d1@x>", order_id="113-1", email_date="2026-07-01")
+        b = R(message_id="<d2@x>", order_id="113-1", email_date="2026-07-02")
+        out = flagmod.rule_duplicate_receipt([a, b])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].rule, "DUPLICATE_RECEIPT")
+
+    def test_r2_negative_different_orders(self):
+        a = R(message_id="<d3@x>", order_id="113-1")
+        b = R(message_id="<d4@x>", order_id="113-2")
+        self.assertEqual(flagmod.rule_duplicate_receipt([a, b]), [])
+
+    def test_r3_subscription_double_bill(self):
+        txns = [T(merchant="NETFLIX", amount_cents=1549, date=d,
+                  description=f"N{i}")
+                for i, d in enumerate(
+                    ["2026-03-05", "2026-04-05", "2026-05-05",
+                     "2026-06-05", "2026-06-20"])]
+        out = flagmod.rule_subscription_double_bill(txns)
+        self.assertEqual(len(out), 1)
+        self.assertIn("2026-06", out[0].detail)
+        self.assertEqual(out[0].severity, "high")
+
+    def test_r3_negative_regular_monthly(self):
+        txns = [T(merchant="NETFLIX", amount_cents=1549, date=d,
+                  description=f"N{i}")
+                for i, d in enumerate(
+                    ["2026-04-05", "2026-05-05", "2026-06-05"])]
+        self.assertEqual(flagmod.rule_subscription_double_bill(txns), [])
+
+    def test_r4_receipt_no_charge(self):
+        r = R(message_id="<n1@x>", email_date="2026-07-01")
+        out = flagmod.rule_receipt_no_charge([r], [], today="2026-07-13")
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].rule, "RECEIPT_NO_CHARGE")
+
+    def test_r4_negative_within_grace_or_matched(self):
+        fresh = R(message_id="<n2@x>", email_date="2026-07-10")
+        self.assertEqual(
+            flagmod.rule_receipt_no_charge([fresh], [], today="2026-07-13"), [])
+        matched = R(message_id="<n3@x>", email_date="2026-07-01")
+        matched.matched_txn_ids = ["amex:x"]
+        self.assertEqual(
+            flagmod.rule_receipt_no_charge([matched], [], today="2026-07-13"), [])
+
+    def test_r5_charge_no_receipt_bounded_to_scan_range(self):
+        inside = T(date="2026-07-05", amount_cents=15000)
+        outside = T(date="2026-05-01", amount_cents=15000, description="OLD")
+        out = flagmod.rule_charge_no_receipt(
+            [inside, outside], ("2026-07-01", "2026-07-10"))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].txn_ids, [inside.txn_id])
+        self.assertEqual(out[0].severity, "warn")   # >= $100
+        # no scan range recorded -> rule stays silent (no false-positive storm)
+        self.assertEqual(flagmod.rule_charge_no_receipt([inside], ("", "")), [])
+
+    def test_r5_negative_expected_merchants(self):
+        toll = T(merchant="PARKING GARAGE", date="2026-07-05")
+        self.assertEqual(
+            flagmod.rule_charge_no_receipt([toll], ("2026-07-01", "2026-07-10")),
+            [])
+
+    def test_f1_unrecognized_merchant(self):
+        known = [T(merchant="AMAZON", date="2026-06-01", description=f"A{i}")
+                 for i in range(2)]
+        new = T(merchant="SHADY VENDOR LLC", date="2026-07-05",
+                amount_cents=9900)
+        out = flagmod.rule_unrecognized_merchant(known + [new])
+        rules = [(f.rule, f.txn_ids) for f in out]
+        self.assertIn(("UNRECOGNIZED_MERCHANT", [new.txn_id]), rules)
+
+    def test_f1_negative_small_or_receipted(self):
+        small = T(merchant="NEW SHOP", amount_cents=1200, date="2026-07-05")
+        receipted = T(merchant="OTHER NEW", amount_cents=9900,
+                      date="2026-07-05", matched_receipt_id="email:x")
+        out = flagmod.rule_unrecognized_merchant([small, receipted])
+        self.assertEqual(out, [])
+
+    def test_f2_amount_outlier(self):
+        history = [T(merchant="CAFE", amount_cents=c, date=f"2026-06-{d:02d}",
+                     description=f"C{d}")
+                   for d, c in [(1, 1200), (5, 1300), (10, 1250)]]
+        spike = T(merchant="CAFE", amount_cents=48000, date="2026-07-01")
+        out = flagmod.rule_amount_outlier(history + [spike])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].txn_ids, [spike.txn_id])
+
+    def test_f2_negative_needs_history_and_magnitude(self):
+        few = [T(merchant="CAFE", amount_cents=1200, date="2026-06-01"),
+               T(merchant="CAFE", amount_cents=48000, date="2026-07-01",
+                 description="C2")]
+        self.assertEqual(flagmod.rule_amount_outlier(few), [])
+        normal = [T(merchant="CAFE", amount_cents=c, date=f"2026-06-{d:02d}",
+                    description=f"C{d}")
+                  for d, c in [(1, 1200), (5, 1300), (10, 1250), (15, 1400)]]
+        self.assertEqual(flagmod.rule_amount_outlier(normal), [])
+
+    def test_f3_foreign_anomaly(self):
+        lone = T(merchant="ROME SHOP", date="2026-07-01",
+                 foreign_amount="95.00", foreign_currency="EUR")
+        out = flagmod.rule_foreign_anomaly([lone, T(description="D")])
+        self.assertEqual(len(out), 1)
+
+    def test_f3_negative_travel_cluster(self):
+        trip = [T(merchant=f"ROME {i}", date=f"2026-07-{d:02d}",
+                  foreign_amount="10.00", foreign_currency="EUR",
+                  description=f"R{i}")
+                for i, d in enumerate([1, 3, 5])]
+        self.assertEqual(flagmod.rule_foreign_anomaly(trip), [])
+
+    def test_f4_round_number(self):
+        t = T(merchant="GIFTCARDS4U", amount_cents=30000, date="2026-07-01")
+        out = flagmod.rule_round_number([t])
+        self.assertEqual(len(out), 1)
+
+    def test_f4_negative_allowlisted_or_receipted(self):
+        irs = T(merchant="IRS PAYMENT", amount_cents=30000, date="2026-07-01")
+        receipted = T(merchant="SHOP", amount_cents=30000, date="2026-07-01",
+                      matched_receipt_id="email:x", description="S")
+        self.assertEqual(flagmod.rule_round_number([irs, receipted]), [])
+
+    def test_f5_micro_charge_probe(self):
+        probe = T(merchant="WEIRD WEB SVC", amount_cents=100, date="2026-07-01")
+        out = flagmod.rule_micro_charge_probe([probe])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].severity, "high")
+
+    def test_f5_negative_known_merchant(self):
+        prior = T(merchant="APPLE", amount_cents=99, date="2026-06-01")
+        again = T(merchant="APPLE", amount_cents=99, date="2026-07-01",
+                  description="A2")
+        out = flagmod.rule_micro_charge_probe([prior, again])
+        self.assertEqual(len(out), 1)          # only the FIRST is flagged
+        self.assertEqual(out[0].txn_ids, [prior.txn_id])
+
+    def test_f6_rapid_fire(self):
+        hits = [T(merchant="SHOP", amount_cents=4999, date="2026-07-01",
+                  description=f"S{i}") for i in range(3)]
+        out = flagmod.rule_rapid_fire(hits)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(len(out[0].txn_ids), 3)
+
+    def test_f6_negative_two_is_fine(self):
+        hits = [T(merchant="SHOP", amount_cents=4999, date="2026-07-01",
+                  description=f"S{i}") for i in range(2)]
+        self.assertEqual(flagmod.rule_rapid_fire(hits), [])
+
+    def test_generate_flags_preserves_dismissals(self):
+        ledger = store.Ledger()
+        a = T(date="2026-07-03", description="X1")
+        b = T(date="2026-07-04", description="X2")
+        ledger.transactions = [a, b]
+        ledger.flags = flagmod.generate_flags(ledger, today="2026-07-13")
+        dup = [f for f in ledger.flags if f.rule == "DUPLICATE_CHARGE"][0]
+        dup.status = "dismissed"
+        regenerated = flagmod.generate_flags(ledger, today="2026-07-13")
+        dup2 = [f for f in regenerated if f.rule == "DUPLICATE_CHARGE"][0]
+        self.assertEqual(dup2.flag_id, dup.flag_id)
+        self.assertEqual(dup2.status, "dismissed")
+
+
 if __name__ == "__main__":
     unittest.main()
