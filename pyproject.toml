@@ -12,10 +12,14 @@ dependencies = ["requests>=2.31"]
 
 [project.optional-dependencies]
 judge = ["anthropic>=0.42"]
+pdf = ["pdfplumber>=0.11"]
+llm = ["anthropic>=0.42"]
+expense = ["pdfplumber>=0.11", "anthropic>=0.42"]
 
 [project.scripts]
 grid-archive-scraper = "grid_archive.cli:main"
+expense-report = "expense_report.cli:main"
 
 [tool.setuptools]
-py-modules = ["config"]
-packages = ["grid_archive", "grid_archive.fetchers"]
+py-modules = ["config", "expense_config"]
+packages = ["grid_archive", "grid_archive.fetchers", "expense_report"]

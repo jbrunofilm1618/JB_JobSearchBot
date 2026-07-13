@@ -16,3 +16,13 @@ manifest.json
 shortlist.json
 contact_sheet.html
 grid_archive.log
+
+# Expense report tool — real financial data never enters version control
+expense_data/
+statements/
+reports/
+expense_report.log
+*.eml
+transactions.csv
+ledger.json
+expense_report.html
