@@ -285,5 +285,301 @@ class TestStore(unittest.TestCase):
         self.assertEqual(cents_to_dollars(None), "")
 
 
+# --------------------------------------------------------------------------- #
+# Email parsing
+# --------------------------------------------------------------------------- #
+
+from email.message import EmailMessage
+
+from expense_report.email_parse import (
+    html_to_text, body_text, extract_total, extract_order_id,
+    extract_line_items, classify_header, parse_receipt,
+)
+from expense_report.card_alerts import parse_alert
+from expense_report import imap_client
+
+
+def make_email(from_addr, subject, body, html=False, message_id="<m1@x>",
+               date="Wed, 01 Jul 2026 10:00:00 -0700"):
+    msg = EmailMessage()
+    msg["From"] = from_addr
+    msg["Subject"] = subject
+    msg["Date"] = date
+    msg["Message-ID"] = message_id
+    if html:
+        msg.set_content("see html")
+        msg.add_alternative(body, subtype="html")
+    else:
+        msg.set_content(body)
+    return msg
+
+
+AMAZON_HTML = """
+<html><head><style>.x{color:red}</style><script>evil()</script></head><body>
+<h1>Order Confirmation</h1>
+<p>Order #113-7654321-1234567</p>
+<table>
+<tr><td>Anker USB-C Cable 6ft</td><td>$15.99</td></tr>
+<tr><td>2 x SanDisk 128GB SD Card</td><td>$39.00</td></tr>
+<tr><td>Shipping &amp; Handling</td><td>$0.00</td></tr>
+<tr><td>Tax</td><td>$4.95</td></tr>
+<tr><td>Grand Total:</td><td>$59.94</td></tr>
+</table></body></html>
+"""
+
+UBER_TEXT = """\
+Thanks for riding, Jonathan.
+Trip fare\t$14.50
+Tip\t$3.00
+Total\t$17.50
+Payment: Amex ****1002
+"""
+
+AMEX_ALERT_TEXT = """\
+A charge of $54.99 at AMZN MKTP US was approved on July 1, 2026.
+Card ending in 71002.
+If you don't recognize this charge, call the number on the back of your card.
+"""
+
+CAPONE_ALERT_TEXT = """\
+Your card was used for $18.42 at UBER TRIP on 07/02/2026.
+Card ending in 1234.
+"""
+
+
+class TestEmailParse(unittest.TestCase):
+    def test_html_to_text_drops_script_and_keeps_cells_adjacent(self):
+        text = html_to_text(AMAZON_HTML)
+        self.assertNotIn("evil", text)
+        self.assertNotIn("color:red", text)
+        self.assertIn("Anker USB-C Cable 6ft\t$15.99", text)
+
+    def test_total_priority_grand_total_beats_subtotal(self):
+        text = "Subtotal\t$10.00\nTax\t$1.00\nGrand Total\t$11.00\n"
+        self.assertEqual(extract_total(text), 1100)
+
+    def test_order_ids(self):
+        self.assertEqual(extract_order_id("Order #113-7654321-1234567"),
+                         "113-7654321-1234567")
+        self.assertEqual(extract_order_id("Confirmation number: ABC123XYZ"),
+                         "ABC123XYZ")
+        self.assertEqual(extract_order_id("no ids here"), "")
+
+    def test_line_items_skip_labels_and_parse_qty(self):
+        text = html_to_text(AMAZON_HTML)
+        items = extract_line_items(text)
+        descs = [i.description for i in items]
+        self.assertIn("Anker USB-C Cable 6ft", descs)
+        self.assertNotIn("Tax", " ".join(descs))
+        self.assertNotIn("Grand Total", " ".join(descs))
+        sd = [i for i in items if "SanDisk" in i.description][0]
+        self.assertEqual(sd.quantity, 2)
+
+    def test_parse_receipt_amazon_html(self):
+        msg = make_email("Amazon.com <auto-confirm@amazon.com>",
+                         "Your Amazon.com order", AMAZON_HTML, html=True)
+        r = parse_receipt(msg, "icloud", "INBOX", "7")
+        self.assertEqual(r.merchant, "AMAZON")
+        self.assertEqual(r.total_cents, 5994)
+        self.assertEqual(r.tax_cents, 495)
+        self.assertEqual(r.order_id, "113-7654321-1234567")
+        self.assertEqual(r.email_date, "2026-07-01")
+        self.assertEqual(r.extraction_method, "rules")
+        self.assertTrue(r.body_sha1)
+
+    def test_parse_receipt_uber_plaintext(self):
+        msg = make_email("Uber Receipts <noreply@uber.com>",
+                         "Your Tuesday trip with Uber", UBER_TEXT)
+        r = parse_receipt(msg, "gmail", "INBOX", "9")
+        self.assertEqual(r.merchant, "UBER")
+        self.assertEqual(r.total_cents, 1750)
+        self.assertEqual(r.tip_cents, 300)
+
+    def test_classify_header(self):
+        self.assertEqual(classify_header("a@shipment-tracking.amazon.com",
+                                         "Your package"), "receipt")
+        self.assertEqual(classify_header("x@unknownshop.com",
+                                         "Receipt for your purchase"), "receipt")
+        self.assertEqual(classify_header(
+            "American Express <alerts@americanexpress.com>",
+            "Transaction alert: purchase approved"), "alert")
+        # bank mail that is not an alert is dropped, not treated as a receipt
+        self.assertEqual(classify_header("news@americanexpress.com",
+                                         "Your statement is ready"), "")
+        # marketing from a receipt domain is dropped
+        self.assertEqual(classify_header("deals@amazon.com",
+                                         "50% off — sale ends tonight"), "")
+        self.assertEqual(classify_header("friend@example.com", "hey"), "")
+
+
+class TestAlertParse(unittest.TestCase):
+    def test_amex_alert(self):
+        msg = make_email("American Express <alerts@americanexpress.com>",
+                         "Purchase approved", AMEX_ALERT_TEXT)
+        txn = parse_alert(msg)
+        self.assertIsNotNone(txn)
+        self.assertEqual(txn.provider, "amex")
+        self.assertEqual(txn.source, "alert")
+        self.assertEqual(txn.amount_cents, 5499)
+        self.assertEqual(txn.merchant, "AMAZON")
+        self.assertEqual(txn.date, "2026-07-01")
+        self.assertEqual(txn.account_suffix, "71002")
+        self.assertTrue(txn.txn_id.startswith("amex-alert:"))
+
+    def test_capitalone_alert(self):
+        msg = make_email("Capital One <no-reply@notification.capitalone.com>",
+                         "New transaction alert", CAPONE_ALERT_TEXT)
+        txn = parse_alert(msg)
+        self.assertIsNotNone(txn)
+        self.assertEqual(txn.provider, "capitalone")
+        self.assertEqual(txn.amount_cents, 1842)
+        self.assertEqual(txn.merchant, "UBER")
+        self.assertEqual(txn.date, "2026-07-02")
+
+    def test_unparseable_alert_returns_none(self):
+        msg = make_email("alerts@americanexpress.com", "Transaction alert",
+                         "Something changed on your account.")
+        self.assertIsNone(parse_alert(msg))
+
+    def test_alert_rescan_idempotent_via_message_id(self):
+        msg = make_email("alerts@americanexpress.com", "Purchase approved",
+                         AMEX_ALERT_TEXT, message_id="<alert1@amex>")
+        a, b = parse_alert(msg), parse_alert(msg)
+        self.assertEqual(a.txn_id, b.txn_id)
+
+
+# --------------------------------------------------------------------------- #
+# IMAP scan with a fake server
+# --------------------------------------------------------------------------- #
+
+class FakeIMAP:
+    """Dynamic imaplib stand-in: holds {uid: EmailMessage}, answers SELECT/
+    STATUS/UID SEARCH/UID FETCH, and records every command for assertions."""
+
+    def __init__(self, messages, uidvalidity="7"):
+        self.messages = {uid: msg.as_bytes() for uid, msg in messages.items()}
+        self.uidvalidity = uidvalidity
+        self.calls = []
+
+    def select(self, folder, readonly=False):
+        self.calls.append(("select", folder, readonly))
+        return "OK", [str(len(self.messages)).encode()]
+
+    def status(self, folder, what):
+        self.calls.append(("status", folder, what))
+        return "OK", [f'"{folder}" (UIDVALIDITY {self.uidvalidity})'.encode()]
+
+    def uid(self, command, *args):
+        self.calls.append(("uid", command) + args)
+        if command == "SEARCH":
+            uids = " ".join(sorted(self.messages, key=int))
+            return "OK", [uids.encode()]
+        if command == "FETCH":
+            uid_list, spec = args[0].split(","), args[1]
+            out = []
+            for uid in uid_list:
+                raw = self.messages.get(uid)
+                if raw is None:
+                    continue
+                if "HEADER.FIELDS" in spec:
+                    msg = raw.split(b"\n\n", 1)[0] + b"\n\n"
+                else:
+                    msg = raw
+                out.append((f"{uid} (UID {uid} BODY[] {{{len(msg)}}}".encode(), msg))
+                out.append(b")")
+            return "OK", out
+        return "NO", []
+
+    def login(self, user, password):
+        self.calls.append(("login", user, "<redacted>"))
+        return "OK", [b"Logged in"]
+
+    def logout(self):
+        self.calls.append(("logout",))
+        return "BYE", []
+
+
+class TestImapScan(unittest.TestCase):
+    def setUp(self):
+        # The scan index persists on disk by design; isolate each test.
+        for name in ("scan_index.json", "scan_range.json"):
+            path = config.data_path(name)
+            if os.path.exists(path):
+                os.remove(path)
+
+    def _messages(self):
+        return {
+            "1": make_email("Amazon.com <auto-confirm@amazon.com>",
+                            "Your Amazon.com order", AMAZON_HTML, html=True,
+                            message_id="<r1@amazon>"),
+            "2": make_email("alerts@americanexpress.com", "Purchase approved",
+                            AMEX_ALERT_TEXT, message_id="<a1@amex>"),
+            "3": make_email("friend@example.com", "lunch?", "hi!",
+                            message_id="<p1@x>"),
+        }
+
+    def test_scan_folder_end_to_end(self):
+        fake = FakeIMAP(self._messages())
+        ledger = store.Ledger()
+        r, a = imap_client.scan_folder(fake, "icloud", "INBOX", "2026-07-01",
+                                       "2026-07-10", None, True, ledger)
+        self.assertEqual((r, a), (1, 1))
+        self.assertEqual(ledger.receipts[0].merchant, "AMAZON")
+        self.assertEqual(ledger.transactions[0].source, "alert")
+        # personal mail never got a body fetch: exactly 2 FETCH calls
+        # (headers for all, bodies for the 2 interesting ones)
+        fetches = [c for c in fake.calls if c[1] == "FETCH"]
+        self.assertEqual(len(fetches), 2)
+        self.assertNotIn("3", fetches[1][2].split(","))
+        # cached .eml exists
+        self.assertTrue(os.path.exists(ledger.receipts[0].body_cache_path))
+
+    def test_scan_is_readonly_and_peek_only(self):
+        fake = FakeIMAP(self._messages())
+        imap_client.scan_folder(fake, "icloud", "INBOX", None, None, None,
+                                True, store.Ledger())
+        select = [c for c in fake.calls if c[0] == "select"][0]
+        self.assertTrue(select[2])                      # readonly=True
+        for call in fake.calls:
+            if call[1] == "FETCH":
+                self.assertIn("PEEK", call[3])          # never plain BODY[]
+
+    def test_search_dates_use_english_months(self):
+        fake = FakeIMAP(self._messages())
+        imap_client.scan_folder(fake, "icloud", "INBOX", "2026-07-01",
+                                "2026-07-10", None, True, store.Ledger())
+        search = [c for c in fake.calls if c[1] == "SEARCH"][0]
+        self.assertIn("01-Jul-2026", search)
+        self.assertIn("11-Jul-2026", search)            # until+1: BEFORE is exclusive
+
+    def test_rescan_fetches_nothing(self):
+        msgs = self._messages()
+        ledger = store.Ledger()
+        imap_client.scan_folder(FakeIMAP(msgs), "icloud", "INBOX",
+                                None, None, None, True, ledger)
+        fake2 = FakeIMAP(msgs)
+        r, a = imap_client.scan_folder(fake2, "icloud", "INBOX",
+                                       None, None, None, True, ledger)
+        self.assertEqual((r, a), (0, 0))
+        self.assertEqual([c for c in fake2.calls if c[1] == "FETCH"], [])
+
+    def test_uidvalidity_change_voids_index_but_stays_idempotent(self):
+        msgs = self._messages()
+        ledger = store.Ledger()
+        imap_client.scan_folder(FakeIMAP(msgs), "icloud", "INBOX",
+                                None, None, None, True, ledger)
+        fake2 = FakeIMAP(msgs, uidvalidity="99")        # server renumbered
+        r, a = imap_client.scan_folder(fake2, "icloud", "INBOX",
+                                       None, None, None, True, ledger)
+        self.assertEqual((r, a), (0, 0))                # dedup by message-id
+        self.assertEqual(len(ledger.receipts), 1)
+
+    def test_imap_date_and_folder_quoting(self):
+        self.assertEqual(imap_client.imap_date("2026-01-05"), "05-Jan-2026")
+        self.assertEqual(imap_client.encode_folder("INBOX"), '"INBOX"')
+        self.assertEqual(imap_client.encode_folder("My Receipts"),
+                         '"My Receipts"')
+
+
 if __name__ == "__main__":
     unittest.main()
