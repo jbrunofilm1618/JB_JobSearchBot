@@ -960,5 +960,70 @@ class TestReport(unittest.TestCase):
         self.assertIn("AMAZON", content)
 
 
+# --------------------------------------------------------------------------- #
+# PDF cross-verification (pure text parsing — no pdfplumber needed)
+# --------------------------------------------------------------------------- #
+
+from expense_report.card_pdf import parse_statement_text, cross_verify
+
+STATEMENT_TEXT = """\
+AMERICAN EXPRESS   Blue Cash Preferred
+JONATHAN BRUNO                          Closing Date 07/10/26
+Account Ending 7-71002
+
+Payments and Credits
+07/01/26   MOBILE PAYMENT - THANK YOU              -500.00
+
+New Charges
+07/01/26*  AMZN MKTP US*A12BC3 AMZN.COM/BILL        54.99
+07/02/26   NETFLIX.COM LOS GATOS CA                 15.49
+07/05/26   TST* THE LITTLE CAFE OAKLAND CA          23.10
+
+Fees
+Total New Charges                                  $93.58
+"""
+
+
+class TestPdfCrossVerify(unittest.TestCase):
+    def test_parse_statement_text(self):
+        st = parse_statement_text(STATEMENT_TEXT)
+        self.assertEqual(st.period_end, "2026-07-10")
+        self.assertEqual(st.total_new_charges, 9358)
+        self.assertEqual(len(st.lines), 3)          # payment row skipped
+        self.assertEqual(st.lines[0]["date"], "2026-07-01")
+        self.assertEqual(st.lines[0]["amount_cents"], 5499)
+
+    def test_cross_verify_marks_verified(self):
+        ledger = store.Ledger()
+        txns, _ = parse_fixture(AMEX_CSV)
+        merge_transactions(ledger, txns)
+        st = parse_statement_text(STATEMENT_TEXT)
+        verified, new_flags = cross_verify(ledger, st, "july.pdf")
+        self.assertEqual(verified, 3)
+        by_m = {t.merchant: t for t in ledger.transactions}
+        self.assertTrue(by_m["AMAZON"].verified_in_pdf)
+        self.assertTrue(by_m["NETFLIX"].verified_in_pdf)
+        # The CSV's ROME txn (07/06, inside the window) is not on this PDF
+        mism = [f for f in new_flags if f.rule == "STATEMENT_MISMATCH"]
+        self.assertTrue(any("ROME" in f.detail for f in mism))
+        # ...and the CSV sum for the window disagrees with the PDF total
+        self.assertTrue(any("total new charges" in f.detail.lower()
+                            for f in mism))
+
+    def test_pdf_only_charge_flagged(self):
+        ledger = store.Ledger()      # empty CSV side
+        st = parse_statement_text(STATEMENT_TEXT)
+        verified, new_flags = cross_verify(ledger, st, "july.pdf")
+        self.assertEqual(verified, 0)
+        self.assertEqual(
+            len([f for f in new_flags if "NOT in the imported CSV" in f.detail]),
+            3)
+
+    def test_unparseable_text_yields_empty_statement(self):
+        st = parse_statement_text("nothing statement-like here\n1234\n")
+        self.assertEqual(st.lines, [])
+        self.assertIsNone(st.total_new_charges)
+
+
 if __name__ == "__main__":
     unittest.main()

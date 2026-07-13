@@ -91,7 +91,7 @@ def main(argv=None) -> int:
         from .card_csv import run_import_csv
         run_import_csv(paths=args.paths, column_overrides=args.column_map)
     elif args.command == "import-pdf":
-        from .amex_pdf import run_import_pdf
+        from .card_pdf import run_import_pdf
         run_import_pdf(paths=args.paths)
     elif args.command == "match":
         from .match import run_match
@@ -108,7 +108,7 @@ def main(argv=None) -> int:
     elif args.command == "run":
         from .imap_client import run_scan
         from .card_csv import run_import_csv
-        from .amex_pdf import run_import_pdf
+        from .card_pdf import run_import_pdf
         from .match import run_match
         from .flags import run_flags
         from .report import run_report
