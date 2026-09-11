@@ -96,6 +96,19 @@ def _card_html(item: Item, share: bool = False) -> str:
     sort_score = item.judge_score if item.judge_score is not None else -1
     usable = "1" if tier in USABLE_TIERS else "0"
 
+    # Per-card link row: the source page always; a direct download of the
+    # original asset whenever the archive exposes one (colleagues pull files
+    # straight from LOC/IA/Wikimedia — no local downloads needed to share).
+    dl = _remote_url(item.master_url) or _remote_url(item.best_download_url)
+    links = (f'<div class="links"><a href="{page}" target="_blank" '
+             f'rel="noopener">source page</a>')
+    if dl:
+        links += (f' &middot; <a href="{html.escape(dl)}" target="_blank" '
+                  f'rel="noopener">&#8595; download original</a>')
+    else:
+        links += ' &middot; <span class="nolink">download via source page</span>'
+    links += "</div>"
+
     return f"""
     <figure class="card" data-format="{item.format}" data-shortlist="{keep}" data-score="{sort_score}" data-usable="{usable}">
       <a href="{page}" target="_blank" rel="noopener">{media}</a>
@@ -106,6 +119,7 @@ def _card_html(item: Item, share: bool = False) -> str:
         <div class="rights">{rights}</div>
         {f'<div class="reason">{reason}</div>' if reason else ''}
         <div class="src">{item.source} &middot; {html.escape(item.query or '')}</div>
+        {links}
       </figcaption>
     </figure>"""
 
@@ -165,6 +179,10 @@ _CSS = """
   .rights { color: #7a7a85; font-size: 11px; }
   .reason { color: #cdcdd4; font-size: 12px; font-style: italic; border-left: 2px solid #33333b; padding-left: 8px; }
   .src { color: #55555f; font-size: 11px; }
+  .links { font-size: 11px; margin-top: 2px; }
+  .links a { color: #8ec9ff; text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+  .links .nolink { color: #7a7a85; }
   .empty { color: #7a7a85; padding: 40px 0; text-align: center; }
 """
 

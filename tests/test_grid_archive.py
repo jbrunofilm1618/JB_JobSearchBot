@@ -734,6 +734,10 @@ def test_share_edition_uses_only_remote_images():
     assert "https://archive.org/services/img/2" in out  # film: remote thumb
     assert 'src="https://archive.org/download/2/2.mp4"' not in out  # never <img> an mp4
     assert 'id="usable"' in out and 'id="shortlist"' in out  # toggles intact
+    # download links: film's mp4 is offered as a download anchor, and every
+    # card carries its source-page link
+    assert 'href="https://archive.org/download/2/2.mp4"' in out
+    assert "download original" in out and "source page" in out
 
     normal = sheet.render_sheet(items)                  # default edition unchanged
     assert "previews/loc_1.jpg" in normal
