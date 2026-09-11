@@ -715,6 +715,30 @@ def test_ensure_tier_backfills_old_rows():
     assert it.rights_tier == "public_domain"   # cached on the item
 
 
+def test_share_edition_uses_only_remote_images():
+    items = [
+        Item(item_id="loc:1", source="LOC", format="photo", group="rural",
+             title="Lineman", rights="No known restrictions",
+             preview_path="previews/loc_1.jpg",              # local — must NOT appear
+             best_download_url="https://tile.loc.gov/m.jpg",  # remote — must appear
+             thumbnail_url="https://tile.loc.gov/s.jpg"),
+        Item(item_id="ia:2", source="IA", format="film", group="big_machine",
+             title="Reel", rights="unspecified",
+             frame_paths=["previews/frames/ia_2_1.jpg"],      # local filmstrip
+             best_download_url="https://archive.org/download/2/2.mp4",
+             thumbnail_url="https://archive.org/services/img/2"),
+    ]
+    out = sheet.render_sheet(items, share=True)
+    assert "previews/" not in out                       # nothing local leaks in
+    assert "https://tile.loc.gov/m.jpg" in out          # photo: remote medium
+    assert "https://archive.org/services/img/2" in out  # film: remote thumb
+    assert 'src="https://archive.org/download/2/2.mp4"' not in out  # never <img> an mp4
+    assert 'id="usable"' in out and 'id="shortlist"' in out  # toggles intact
+
+    normal = sheet.render_sheet(items)                  # default edition unchanged
+    assert "previews/loc_1.jpg" in normal
+
+
 def test_parse_sources_aliases_and_errors():
     assert parse_sources(None) is None
     assert parse_sources("") is None
