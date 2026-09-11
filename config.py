@@ -161,6 +161,7 @@ MANIFEST_CSV = "manifest.csv"
 MANIFEST_JSON = "manifest.json"
 SHORTLIST_JSON = "shortlist.json"
 CONTACT_SHEET_HTML = "contact_sheet.html"
+SHARE_SHEET_HTML = "contact_sheet_share.html"  # portable edition, remote images
 SHEET_ARCHIVE_DIR = "archive"     # every `sheet` run also snapshots here, timestamped
 
 # HTTP identity. A descriptive UA is courteous and reduces the odds of a block.

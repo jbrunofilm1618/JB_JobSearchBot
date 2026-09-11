@@ -44,7 +44,13 @@ _TIER_BADGES = {
 }
 
 
-def _card_html(item: Item) -> str:
+def _remote_url(url) -> str:
+    """Only http(s) / protocol-relative URLs travel in a shared file."""
+    u = str(url or "")
+    return u if u.startswith(("http://", "https://", "//")) else ""
+
+
+def _card_html(item: Item, share: bool = False) -> str:
     title = html.escape(item.title or "(untitled)")
     date = html.escape(item.date or "n.d.")
     creator = html.escape(item.creator or "unknown")
@@ -60,8 +66,17 @@ def _card_html(item: Item) -> str:
     note = html.escape(item.streaming_note or "")
     note_badge = f'<span class="note">{note}</span>' if note else ""
 
-    # Media block: filmstrip for films with frames, else single image.
-    if item.format == "film" and item.frame_paths:
+    # Media block: filmstrip for films with frames, else single image. In share
+    # mode every image must be a REMOTE archive URL — local previews/ frames
+    # don't travel with a single emailed HTML file.
+    if share:
+        if item.format == "photo":
+            src = _remote_url(item.best_download_url) or _remote_url(item.thumbnail_url)
+        else:
+            src = _remote_url(item.thumbnail_url)  # never point <img> at an MP4
+        media = (f'<img class="thumb" loading="lazy" src="{html.escape(src)}" alt="{title}">'
+                 if src else '<div class="thumb missing">no remote preview</div>')
+    elif item.format == "film" and item.frame_paths:
         strip = "".join(
             f'<img loading="lazy" src="{html.escape(p)}" alt="frame">'
             for p in item.frame_paths)
@@ -95,8 +110,9 @@ def _card_html(item: Item) -> str:
     </figure>"""
 
 
-def _group_section(group_key: str, label: str, items: List[Item]) -> str:
-    cards = "\n".join(_card_html(it) for it in items)
+def _group_section(group_key: str, label: str, items: List[Item],
+                   share: bool = False) -> str:
+    cards = "\n".join(_card_html(it, share=share) for it in items)
     return f"""
     <section class="group" data-group="{group_key}">
       <h2>{label} <span class="count">{len(items)}</span></h2>
@@ -182,7 +198,7 @@ _JS = """
 """
 
 
-def render_sheet(items: List[Item]) -> str:
+def render_sheet(items: List[Item], share: bool = False) -> str:
     by_group: dict = {}
     for it in items:
         by_group.setdefault(it.group, []).append(it)
@@ -196,7 +212,7 @@ def render_sheet(items: List[Item]) -> str:
               sorted(k for k in by_group if k not in known)
     sections = "\n".join(
         _group_section(k, labels.get(k, html.escape(k.replace("_", " ").title())),
-                       by_group[k])
+                       by_group[k], share=share)
         for k in ordered)
 
     total = len(items)
@@ -236,12 +252,23 @@ def render_sheet(items: List[Item]) -> str:
 </body></html>"""
 
 
-def run_sheet() -> str:
+def run_sheet(share: bool = False) -> str:
     from datetime import datetime
 
     items = manifest.load_items()
     if not items:
         log.warning("no manifest found; run `search` first")
+
+    if share:
+        # Portable single-file edition: images stream from the archives' own
+        # servers, so this file can be emailed / dropped in Drive and opened
+        # anywhere with internet. No local previews needed, no snapshot taken.
+        path = os.path.join(config.OUTPUT_DIR, config.SHARE_SHEET_HTML)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(render_sheet(items, share=True))
+        log.info("wrote portable share edition: %s (%d items)", path, len(items))
+        return path
+
     html_out = render_sheet(items)
     path = os.path.join(config.OUTPUT_DIR, config.CONTACT_SHEET_HTML)
     with open(path, "w", encoding="utf-8") as fh:

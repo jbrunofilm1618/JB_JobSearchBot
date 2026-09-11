@@ -69,7 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help=f"skip MP4 derivatives larger than this (default {config.MAX_CLIP_MB})")
     pv.add_argument("--sources", help=sources_help)
 
-    sub.add_parser("sheet", help="render contact_sheet.html from the manifest")
+    sh = sub.add_parser("sheet", help="render contact_sheet.html from the manifest")
+    sh.add_argument("--share", action="store_true",
+                    help="also write contact_sheet_share.html — a portable single "
+                         "file with remote images, safe to email or upload")
 
     jd = sub.add_parser("judge", help="score items against the brief via Claude")
     jd.add_argument("--rejudge", action="store_true",
@@ -136,6 +139,8 @@ def main(argv=None) -> int:
     elif args.command == "sheet":
         from .sheet import run_sheet
         run_sheet()
+        if args.share:
+            run_sheet(share=True)
     elif args.command == "judge":
         from .judge import run_judge
         run_judge(rejudge=args.rejudge)
