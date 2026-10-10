@@ -126,8 +126,10 @@ class LocFetcher(Fetcher):
                                     max_pages))
 
             # FSA/OWI motherlode fallback: if the boost yielded nothing, retry
-            # with the plain-language collection name.
-            if not items and fa and fa[0] in config.LOC_COLLECTION_BOOSTS:
+            # with the plain-language collection name (eras with no fallback
+            # configured skip this).
+            if not items and fa and fa[0] in config.LOC_COLLECTION_BOOSTS \
+                    and config.LOC_COLLECTION_FALLBACK:
                 log.info("LOC boost %r empty; falling back to %r",
                          fa[0], config.LOC_COLLECTION_FALLBACK)
                 items = list(self._run_spec_iter(

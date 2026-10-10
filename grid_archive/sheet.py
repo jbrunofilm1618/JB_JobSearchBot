@@ -32,6 +32,12 @@ _GROUP_LABELS = [
     ("clean_energy", "Clean energy at scale"),
     ("grid_modern", "The smarter grid"),
     ("motion", "Energy in motion"),
+    # website brand-refresh profile
+    ("coops", "Rural electric co-ops"),
+    ("universities", "Universities"),
+    ("municipalities", "Municipalities"),
+    ("datacenters", "Data centers"),
+    ("military", "Military installations"),
 ]
 
 

@@ -17,6 +17,10 @@ from __future__ import annotations
 START_DATE = "1930-01-01"
 END_DATE = "1959-12-31"
 
+# Which media kinds a run searches. Eras can narrow this (the website profile
+# is photos-only, so no film queries are wasted).
+MEDIA_TYPES = ("photo", "film")
+
 # --------------------------------------------------------------------------- #
 # Politeness / rate limiting. The archives throttle anonymous traffic; these
 # keep us under the radar. Delays are seconds.
@@ -194,21 +198,45 @@ no blackout imagery.
 Score each item 1 (irrelevant) to 5 (hero shot) for this specific film.
 """
 
+WEBSITE_CREATIVE_BRIEF = """\
+I am sourcing replacement imagery for a grid-intelligence company's WEBSITE —
+half-page hero photos that sit next to text on a clean, bright, modern page.
+Priority segments, highest first:
+1) RURAL ELECTRIC CO-OPS: line crews at work, bucket trucks, everyday
+   blue-collar utility workers (ideally near a co-op sign or headquarters
+   building), rural power lines and feeders in handsome landscape.
+2) UNIVERSITIES: aerial or elevated shots of LARGE campuses — New Mexico
+   State University or other New Mexico universities score highest; any big
+   modern campus aerial works; bonus for visible power lines in frame.
+3) MUNICIPALITIES: small-city civic fabric — city halls, main streets from
+   above, municipal utility infrastructure.
+4) DATA CENTERS: large modern hyperscale facilities, exteriors or aerials.
+5) MILITARY INSTALLATIONS (lowest): base aerials, base solar arrays.
+Look: professional, optimistic, warm or golden-hour light welcome, clean
+compositions that crop well to a square or half-page block, high resolution.
+No decay, no disasters, no dated low-res digicam look, no visible crowds of
+identifiable faces front-and-center.
+Score each item 1 (irrelevant) to 5 (website hero shot).
+"""
+
 ERAS = {
     "golden_age": {
         # The values already defined above ARE the golden-age defaults; this
         # entry exists so `--era golden_age` can restore them after a modern run.
         "START_DATE": START_DATE,
         "END_DATE": END_DATE,
+        "MEDIA_TYPES": ("photo", "film"),
         "QUERIES": list(QUERIES),
         "CREATIVE_BRIEF": CREATIVE_BRIEF,
         "LOC_COLLECTION_BOOSTS": list(LOC_COLLECTION_BOOSTS),
+        "LOC_COLLECTION_FALLBACK": LOC_COLLECTION_FALLBACK,
         "LOC_CONTRIBUTOR_BOOSTS": list(LOC_CONTRIBUTOR_BOOSTS),
         "IA_ALWAYS_INCLUDE_TITLES": list(IA_ALWAYS_INCLUDE_TITLES),
     },
     "modern": {
         "START_DATE": "1995-01-01",
         "END_DATE": "2026-12-31",
+        "MEDIA_TYPES": ("photo", "film"),
         "QUERIES": [
             # --- The digital revolution ---------------------------------- #
             ("digital", "data center"),
@@ -242,14 +270,63 @@ ERAS = {
         # Period boosts make no sense post-1995: FSA/OWI is 1935-44 and the
         # REA film is 1940 — disable them so no requests are wasted.
         "LOC_COLLECTION_BOOSTS": [],
+        "LOC_COLLECTION_FALLBACK": "",
+        "LOC_CONTRIBUTOR_BOOSTS": [],
+        "IA_ALWAYS_INCLUDE_TITLES": [],
+    },
+    "website": {
+        # Brand-refresh pass: replacement WEBSITE photos for the company site's
+        # segment pages. Photos only; 1990+ keeps the modern look while letting
+        # the Highsmith archive (late-20th-c to present, rights-free) in.
+        "START_DATE": "1990-01-01",
+        "END_DATE": "2026-12-31",
+        "MEDIA_TYPES": ("photo",),
+        "QUERIES": [
+            # --- 1) Rural electric co-ops (top priority: most queries) ---- #
+            ("coops", "rural electric cooperative"),
+            ("coops", "electric cooperative"),
+            ("coops", "lineman power line"),
+            ("coops", "line crew utility pole"),
+            ("coops", "bucket truck lineman"),
+            ("coops", "utility workers"),
+            ("coops", "rural power lines"),
+            ("coops", "electric co-op"),
+            # --- 2) Universities (NMSU / New Mexico score highest) -------- #
+            ("universities", "New Mexico State University campus"),
+            ("universities", "New Mexico State University aerial"),
+            ("universities", "University of New Mexico campus"),
+            ("universities", "university campus aerial"),
+            ("universities", "college campus aerial view"),
+            ("universities", "university campus from above"),
+            # --- 3) Municipalities ----------------------------------------- #
+            ("municipalities", "municipal utility"),
+            ("municipalities", "small town aerial"),
+            ("municipalities", "city hall"),
+            ("municipalities", "main street aerial"),
+            # --- 4) Data centers / hyperscalers ---------------------------- #
+            ("datacenters", "data center exterior"),
+            ("datacenters", "data center aerial"),
+            ("datacenters", "hyperscale data center"),
+            ("datacenters", "server farm building"),
+            # --- 5) Military installations (lowest priority, light touch) -- #
+            ("military", "military base aerial"),
+            ("military", "air force base solar array"),
+        ],
+        "CREATIVE_BRIEF": WEBSITE_CREATIVE_BRIEF,
+        # The Carol M. Highsmith Archive: modern, high-res, explicitly
+        # rights-free photography of American campuses, towns, and
+        # infrastructure — this profile's FSA/OWI equivalent.
+        "LOC_COLLECTION_BOOSTS": ["partof:carol m. highsmith archive"],
+        "LOC_COLLECTION_FALLBACK": "partof:highsmith",
         "LOC_CONTRIBUTOR_BOOSTS": [],
         "IA_ALWAYS_INCLUDE_TITLES": [],
     },
 }
 
 #: names of the module globals an era is allowed to swap
-_ERA_KEYS = ("START_DATE", "END_DATE", "QUERIES", "CREATIVE_BRIEF",
-             "LOC_COLLECTION_BOOSTS", "LOC_CONTRIBUTOR_BOOSTS",
+_ERA_KEYS = ("START_DATE", "END_DATE", "MEDIA_TYPES", "QUERIES",
+             "CREATIVE_BRIEF", "LOC_COLLECTION_BOOSTS",
+             "LOC_COLLECTION_FALLBACK", "LOC_CONTRIBUTOR_BOOSTS",
              "IA_ALWAYS_INCLUDE_TITLES")
 
 

@@ -626,6 +626,23 @@ def test_judge_sniffs_media_type_from_bytes_not_extension():
         assert judge._image_block(junk) is None   # skipped, not mislabeled
 
 
+def test_apply_era_website_profile():
+    try:
+        config.apply_era("website")
+        assert config.MEDIA_TYPES == ("photo",)          # photos only, no film waste
+        assert config.START_DATE == "1990-01-01"
+        groups = {g for g, _ in config.QUERIES}
+        assert {"coops", "universities", "municipalities",
+                "datacenters", "military"} <= groups
+        assert any("New Mexico State University" in q for _, q in config.QUERIES)
+        assert "highsmith" in config.LOC_COLLECTION_BOOSTS[0]
+        assert "co-op" in config.CREATIVE_BRIEF.lower() or \
+               "co-ops" in config.CREATIVE_BRIEF.lower()
+    finally:
+        config.apply_era("golden_age")
+    assert config.MEDIA_TYPES == ("photo", "film")
+
+
 def test_apply_era_swaps_and_restores():
     try:
         config.apply_era("modern")
