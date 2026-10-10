@@ -56,9 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
     sources_help = ("only hit these sources, comma-separated: loc, ia, wikimedia, "
                     "nara, dpla (default: all). Existing manifest rows from other "
                     "sources are kept untouched.")
-    era_help = ("which chapter to work in: 'golden_age' (1930-1959 buildout, "
-                "default) or 'modern' (1995+ — datacenters, EV, solar, wind, "
-                "light trails). Swaps dates, queries, and the judge brief.")
+    era_help = ("which profile to work in: 'golden_age' (1930-1959 buildout, "
+                "default), 'modern' (1995+ — datacenters, EV, solar, wind, "
+                "light trails), or 'website' (photos-only brand refresh: "
+                "co-ops, campus aerials, municipalities, datacenters). "
+                "Swaps dates, queries, media types, and the judge brief.")
 
     se = sub.add_parser("search", help="run the query matrix and write the manifest")
     se.add_argument("--sources", help=sources_help)

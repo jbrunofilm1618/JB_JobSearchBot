@@ -82,7 +82,7 @@ def _drain_source(fetcher: Fetcher, stop_event) -> List[Item]:
         if stop_event.is_set():
             log.info("search[%s]: stopped early", fetcher.source)
             return found
-        for media_type in MEDIA_TYPES:
+        for media_type in config.MEDIA_TYPES:  # era-dependent (website: photos only)
             try:
                 found.extend(fetcher.search(query, media_type, group))
             except Exception as exc:  # noqa: BLE001 - one query must not sink the run
