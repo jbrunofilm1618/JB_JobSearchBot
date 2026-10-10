@@ -210,8 +210,17 @@ Priority segments, highest first:
    modern campus aerial works; bonus for visible power lines in frame.
 3) MUNICIPALITIES: small-city civic fabric — city halls, main streets from
    above, municipal utility infrastructure.
-4) DATA CENTERS: large modern hyperscale facilities, exteriors or aerials.
-5) MILITARY INSTALLATIONS (lowest): base aerials, base solar arrays.
+4) DATA CENTERS: exterior AERIAL shots that show the sheer scale of a
+   hyperscale campus are strongly preferred; interiors only qualify when
+   they read warehouse-scale (endless rows receding into distance).
+5) MILITARY INSTALLATIONS: large campuses that show the VASTNESS of the
+   operation — favor desert-southwest bases and harsh-weather/Arctic bases;
+   also critical-operations imagery: long rows of military vehicles,
+   missile prep or launch facilities, and massed aircraft (boneyards,
+   crowded flight lines).
+HARD GEOGRAPHIC RULE: everything must be in the UNITED STATES (Hawaii and
+Alaska count). Skip anything identifiably outside the US — foreign campuses,
+foreign bases, foreign cities.
 Look: professional, optimistic, warm or golden-hour light welcome, clean
 compositions that crop well to a square or half-page block, high resolution.
 No decay, no disasters, no dated low-res digicam look, no visible crowds of
@@ -303,14 +312,26 @@ ERAS = {
             ("municipalities", "small town aerial"),
             ("municipalities", "city hall"),
             ("municipalities", "main street aerial"),
-            # --- 4) Data centers / hyperscalers ---------------------------- #
-            ("datacenters", "data center exterior"),
+            # --- 4) Data centers: exterior aerials that show SCALE --------- #
             ("datacenters", "data center aerial"),
+            ("datacenters", "data center campus aerial"),
+            ("datacenters", "data center exterior"),
             ("datacenters", "hyperscale data center"),
-            ("datacenters", "server farm building"),
-            # --- 5) Military installations (lowest priority, light touch) -- #
+            ("datacenters", "data center construction aerial"),
+            ("datacenters", "data center server hall"),
+            ("datacenters", "server room rows"),
+            # --- 5) Military: vastness, desert SW, harsh weather, critical
+            #        ops (vehicle rows, missile sites, massed aircraft) ----- #
             ("military", "military base aerial"),
-            ("military", "air force base solar array"),
+            ("military", "air force base desert"),
+            ("military", "aircraft boneyard"),
+            ("military", "Davis-Monthan aircraft storage"),
+            ("military", "missile launch facility"),
+            ("military", "ICBM silo"),
+            ("military", "military vehicles lined up"),
+            ("military", "army depot aerial"),
+            ("military", "air force base Alaska"),
+            ("military", "flight line aircraft"),
         ],
         "CREATIVE_BRIEF": WEBSITE_CREATIVE_BRIEF,
         # The Carol M. Highsmith Archive: modern, high-res, explicitly
