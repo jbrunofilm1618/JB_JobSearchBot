@@ -58,9 +58,10 @@ def build_parser() -> argparse.ArgumentParser:
                     "sources are kept untouched.")
     era_help = ("which profile to work in: 'golden_age' (1930-1959 buildout, "
                 "default), 'modern' (1995+ — datacenters, EV, solar, wind, "
-                "light trails), or 'website' (photos-only brand refresh: "
-                "co-ops, campus aerials, municipalities, datacenters). "
-                "Swaps dates, queries, media types, and the judge brief.")
+                "light trails), 'website' (photos-only brand refresh), or "
+                "'calendar' (6-week social-calendar supplement imagery, "
+                "grouped by week theme). Swaps dates, queries, media types, "
+                "and the judge brief.")
 
     se = sub.add_parser("search", help="run the query matrix and write the manifest")
     se.add_argument("--sources", help=sources_help)

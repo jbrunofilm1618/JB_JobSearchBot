@@ -626,6 +626,29 @@ def test_judge_sniffs_media_type_from_bytes_not_extension():
         assert judge._image_block(junk) is None   # skipped, not mislabeled
 
 
+def test_apply_era_calendar_profile():
+    try:
+        config.apply_era("calendar")
+        assert config.MEDIA_TYPES == ("photo", "film")   # footage wanted too
+        groups = [g for g, _ in config.QUERIES]
+        assert groups.index("w1_origins") < groups.index("w6_field")
+        assert {"w1_origins","w2_evidence","w3_people","w4_lab",
+                "w5_monitoring","w6_field"} == set(groups)
+        assert "CONTEXT" in config.CREATIVE_BRIEF        # no-deployment-implication rule
+        assert config.IA_ALWAYS_INCLUDE_TITLES == []
+    finally:
+        config.apply_era("golden_age")
+
+
+def test_sheet_calendar_groups_render_in_week_order():
+    items = [Item(item_id=f"wc:{i}", source="WIKIMEDIA", format="photo",
+                  group=g, title=g, rights="CC0")
+             for i, g in enumerate(["w6_field", "w1_origins", "w3_people"])]
+    out = sheet.render_sheet(items)
+    assert "Week 1" in out and "Week 3" in out and "Week 6" in out
+    assert out.index("Week 1") < out.index("Week 3") < out.index("Week 6")
+
+
 def test_apply_era_website_profile():
     try:
         config.apply_era("website")

@@ -228,6 +228,34 @@ identifiable faces front-and-center.
 Score each item 1 (irrelevant) to 5 (website hero shot).
 """
 
+CALENDAR_CREATIVE_BRIEF = """\
+I am sourcing ARCHIVAL-SUPPLEMENT imagery for a 6-week social calendar for a
+grid-monitoring company. Owned material (founder photos, customer stills, lab
+shots) comes from elsewhere; score items here for their fit as supporting
+context. Prefer authentic utility work, operators, rural distribution
+infrastructure, and electrical measurement over generic technology imagery.
+Themes, in calendar order:
+  Week 1 origins: rural lines, co-op crews, electrical measurement,
+  interconnection context.
+  Week 2 indication/finding/response: line inspection, testing, locating and
+  repairing faults — context only, never a substitute for case evidence.
+  Week 3 customer value and people: engineers reviewing information, crew
+  expertise, operators at work.
+  Week 4 engineering and the lab: instruments, sensors, workbench detail,
+  grid demand.
+  Week 5 evaluating monitoring: engineering review, inspection preparation,
+  measurement and recording equipment.
+  Week 6 field learning: inspection planning, field verification, the people
+  behind the evidence.
+HARD RULES: archival-era imagery is CONTEXT, labeled by era and place — it
+must never read as, or be usable to imply, this company's own deployment,
+customers, or interface. Never pick a shot showing another vendor's
+software interface as if it were monitoring product UI. Prefer frames that
+crop well to portrait, square, AND landscape. No generic stock-tech look,
+no decay-as-spectacle.
+Score each item 1 (irrelevant) to 5 (strong calendar candidate).
+"""
+
 ERAS = {
     "golden_age": {
         # The values already defined above ARE the golden-age defaults; this
@@ -339,6 +367,54 @@ ERAS = {
         # infrastructure — this profile's FSA/OWI equivalent.
         "LOC_COLLECTION_BOOSTS": ["partof:carol m. highsmith archive"],
         "LOC_COLLECTION_FALLBACK": "partof:highsmith",
+        "LOC_CONTRIBUTOR_BOOSTS": [],
+        "IA_ALWAYS_INCLUDE_TITLES": [],
+    },
+    "calendar": {
+        # Section 2 of the social/calendar brief: archival-supplement imagery
+        # for the 6-week posting calendar, grouped by week theme. Both photos
+        # and film; wide date window because historical electrification
+        # imagery is wanted as CONTEXT (era-labeled via the date column),
+        # alongside modern utility work. Run this in its own bucket folder so
+        # records and outputs stay separate, per the brief.
+        "START_DATE": "1930-01-01",
+        "END_DATE": "2026-12-31",
+        "MEDIA_TYPES": ("photo", "film"),
+        "QUERIES": [
+            # Week 1 — origins & introduction
+            ("w1_origins", "rural power lines"),
+            ("w1_origins", "electric cooperative line crew"),
+            ("w1_origins", "electrical measurement"),
+            ("w1_origins", "substation interconnection"),
+            # Week 2 — indication, finding, response (context only)
+            ("w2_evidence", "power line inspection"),
+            ("w2_evidence", "electrical fault testing"),
+            ("w2_evidence", "lineman repair"),
+            ("w2_evidence", "transformer maintenance"),
+            # Week 3 — customer value & people
+            ("w3_people", "utility engineer"),
+            ("w3_people", "control room operator"),
+            ("w3_people", "engineers reviewing data"),
+            ("w3_people", "line crew working"),
+            # Week 4 — engineering & the lab
+            ("w4_lab", "electrical laboratory instruments"),
+            ("w4_lab", "oscilloscope workbench"),
+            ("w4_lab", "sensor circuit board"),
+            ("w4_lab", "electric meter testing"),
+            # Week 5 — evaluating monitoring
+            ("w5_monitoring", "power grid monitoring"),
+            ("w5_monitoring", "substation inspection"),
+            ("w5_monitoring", "electrical recording instrument"),
+            ("w5_monitoring", "test equipment panel"),
+            # Week 6 — field learning
+            ("w6_field", "field inspection utility"),
+            ("w6_field", "surveying transmission line"),
+            ("w6_field", "lineman training"),
+            ("w6_field", "utility field crew"),
+        ],
+        "CREATIVE_BRIEF": CALENDAR_CREATIVE_BRIEF,
+        "LOC_COLLECTION_BOOSTS": [],
+        "LOC_COLLECTION_FALLBACK": "",
         "LOC_CONTRIBUTOR_BOOSTS": [],
         "IA_ALWAYS_INCLUDE_TITLES": [],
     },
