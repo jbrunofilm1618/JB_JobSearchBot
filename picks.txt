@@ -18,3 +18,11 @@ wc:133640991
 wc:152298322
 wc:7428904
 wc:93122779
+# Pack 2 additions (CC-BY round — CC-BY items require a credit line)
+wc:84181144
+wc:156917361
+wc:151489248
+wc:194118959
+wc:181841572
+wc:44960908
+wc:3359510
