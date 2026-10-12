@@ -38,6 +38,13 @@ _GROUP_LABELS = [
     ("municipalities", "Municipalities"),
     ("datacenters", "Data centers"),
     ("military", "Military installations"),
+    # calendar profile (social calendar weeks)
+    ("w1_origins", "Week 1 — Origins &amp; introduction"),
+    ("w2_evidence", "Week 2 — Indication, finding, response (context only)"),
+    ("w3_people", "Week 3 — Customer value &amp; people"),
+    ("w4_lab", "Week 4 — Engineering &amp; the lab"),
+    ("w5_monitoring", "Week 5 — Evaluating monitoring"),
+    ("w6_field", "Week 6 — Field learning"),
 ]
 
 
@@ -179,6 +186,7 @@ _CSS = """
   .tier.share_alike { background: #4d3a1d; color: #ffcf8a; }
   .tier.restricted { background: #4d1d1d; color: #ff9a9a; }
   .tier.unknown { background: #3a3a42; color: #c2c2cc; }
+  .aspect { font-size: 10.5px; color: #9a9aa3; border: 1px solid #33333b; padding: 1px 6px; border-radius: 4px; }
   .title { font-weight: 600; font-size: 14px; }
   .title a:hover { text-decoration: underline; }
   .meta { color: #b6b6bd; font-size: 12px; }
@@ -218,6 +226,22 @@ _JS = """
   document.getElementById('sort').addEventListener('change', e => { state.sort = e.target.value; apply(); });
   document.getElementById('shortlist').addEventListener('change', e => { state.shortlistOnly = e.target.checked; apply(); });
   document.getElementById('usable').addEventListener('change', e => { state.usableOnly = e.target.checked; apply(); });
+  // Crop-planning chip: tag each card with the image's native orientation
+  // (from real pixel dimensions, masters untouched) so portrait/square/
+  // landscape crop options can be judged at a glance.
+  document.querySelectorAll('.card .thumb').forEach(img => {
+    const tag = () => {
+      if (!img.naturalWidth || !img.naturalHeight) return;
+      const r = img.naturalWidth / img.naturalHeight;
+      const kind = r < 0.9 ? 'portrait' : (r <= 1.15 ? 'square' : 'landscape');
+      const chip = document.createElement('span');
+      chip.className = 'aspect';
+      chip.textContent = kind + ' ' + img.naturalWidth + '×' + img.naturalHeight;
+      const badges = img.closest('.card').querySelector('.badges');
+      if (badges && !badges.querySelector('.aspect')) badges.appendChild(chip);
+    };
+    img.complete ? tag() : img.addEventListener('load', tag);
+  });
   apply();
 """
 
