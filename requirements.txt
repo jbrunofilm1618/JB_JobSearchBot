@@ -1,2 +1,3 @@
 requests>=2.31
 anthropic>=0.42        # only needed for the `judge` subcommand
+piexif>=1.1.3          # embeds credit/rights into JPEG masters' EXIF, losslessly
