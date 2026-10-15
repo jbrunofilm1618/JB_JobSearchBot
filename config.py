@@ -256,6 +256,24 @@ no decay-as-spectacle.
 Score each item 1 (irrelevant) to 5 (strong calendar candidate).
 """
 
+REA_CREATIVE_BRIEF = """\
+I am sourcing WEBSITE photographs from the REA era — the electrification of
+rural America, 1930-1955. Usable rights only (public domain preferred; CC-BY
+acceptable with credit). I want, in priority order:
+1) POWER LINES: rural distribution and transmission runs, poles marching
+   through farmland, new line construction.
+2) LINEMEN IN THE FIELD: crews climbing, stringing wire, setting poles,
+   working from trucks — real work, not posed portraits.
+3) POWER STATIONS: generating stations, powerhouses, substations of the era.
+4) GENERATORS: actual machines — turbine halls, generator floors, dynamos.
+5) COPPER WIRE: large runs, reels, and spools of conductor used in early
+   electrification; wire being paid out along a line.
+Look: documentary authenticity (FSA/OWI-grade), strong compositions that can
+hold as half-page website images, era-labeled. No decay-as-spectacle, no
+modern intrusions in frame.
+Score each item 1 (irrelevant) to 5 (website hero shot).
+"""
+
 ERAS = {
     "golden_age": {
         # The values already defined above ARE the golden-age defaults; this
@@ -415,6 +433,46 @@ ERAS = {
         "CREATIVE_BRIEF": CALENDAR_CREATIVE_BRIEF,
         "LOC_COLLECTION_BOOSTS": [],
         "LOC_COLLECTION_FALLBACK": "",
+        "LOC_CONTRIBUTOR_BOOSTS": [],
+        "IA_ALWAYS_INCLUDE_TITLES": [],
+    },
+    "rea": {
+        # REA-era website photos: rural electrification 1930-1955, photos only.
+        # FSA/OWI collection boost stays on (it IS this era's motherlode) and
+        # the FSA photographer boosts are re-keyed to this profile's groups.
+        "START_DATE": "1930-01-01",
+        "END_DATE": "1955-12-31",
+        "MEDIA_TYPES": ("photo",),
+        "QUERIES": [
+            # 1) Power lines
+            ("powerlines", "rural power lines"),
+            ("powerlines", "power line construction"),
+            ("powerlines", "transmission line"),
+            ("powerlines", "rural electrification line"),
+            # 2) Linemen in the field
+            ("linemen", "lineman"),
+            ("linemen", "line crew"),
+            ("linemen", "stringing wire"),
+            ("linemen", "setting utility pole"),
+            ("linemen", "REA cooperative crew"),
+            # 3) Power stations
+            ("stations", "power station"),
+            ("stations", "powerhouse"),
+            ("stations", "substation"),
+            ("stations", "hydroelectric power plant"),
+            # 4) Generators
+            ("generators", "generator"),
+            ("generators", "turbine hall"),
+            ("generators", "dynamo electric"),
+            # 5) Copper wire runs
+            ("copper", "copper wire"),
+            ("copper", "wire reel"),
+            ("copper", "cable spool"),
+            ("copper", "conductor wire electrification"),
+        ],
+        "CREATIVE_BRIEF": REA_CREATIVE_BRIEF,
+        "LOC_COLLECTION_BOOSTS": ["partof:fsa/owi black-and-white negatives"],
+        "LOC_COLLECTION_FALLBACK": "partof:farm security administration",
         "LOC_CONTRIBUTOR_BOOSTS": [],
         "IA_ALWAYS_INCLUDE_TITLES": [],
     },

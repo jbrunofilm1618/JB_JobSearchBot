@@ -45,6 +45,12 @@ _GROUP_LABELS = [
     ("w4_lab", "Week 4 — Engineering &amp; the lab"),
     ("w5_monitoring", "Week 5 — Evaluating monitoring"),
     ("w6_field", "Week 6 — Field learning"),
+    # REA-era website profile
+    ("powerlines", "Power lines"),
+    ("linemen", "Linemen in the field"),
+    ("stations", "Power stations"),
+    ("generators", "Generators"),
+    ("copper", "Copper wire runs"),
 ]
 
 
