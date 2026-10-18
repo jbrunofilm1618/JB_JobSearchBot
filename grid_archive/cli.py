@@ -95,6 +95,11 @@ def build_parser() -> argparse.ArgumentParser:
     fm.add_argument("--force", action="store_true",
                     help="also pull rights-gated items (only if you hold a direct license)")
     fm.add_argument("--archive-list", help=archive_help)
+    fm.add_argument("--batch",
+                    help="name of this pull's folder under masters/ (default: "
+                         "today's date, e.g. masters/2026-10-17/). Rerunning "
+                         "with the same name resumes into the same folder; "
+                         "already-downloaded items are never re-pulled.")
 
     rn = sub.add_parser("run", help="search -> preview -> sheet")
     rn.add_argument("--max-clip-mb", type=int, default=config.MAX_CLIP_MB)
@@ -159,7 +164,7 @@ def main(argv=None) -> int:
         from .masters import run_fetch_masters
         run_fetch_masters(ids=args.ids, ids_file=args.ids_file,
                           use_cache=use_cache, force=args.force,
-                          archive_list=args.archive_list)
+                          archive_list=args.archive_list, batch=args.batch)
     elif args.command == "run":
         from .search import run_search
         from .preview import run_preview
