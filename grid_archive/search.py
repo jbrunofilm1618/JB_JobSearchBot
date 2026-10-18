@@ -115,7 +115,16 @@ def run_search(use_cache: bool = True, sources: Optional[set] = None) -> List[It
             added = 0
             for item in fut.result():
                 if item.item_id in by_id:
-                    continue  # dedupe across queries and sources
+                    # Dedupe across queries and sources — but backfill metadata
+                    # an older scrape didn't capture (place was added after the
+                    # first runs). Judge results and local paths are untouched,
+                    # so a cached re-search upgrades old rows for free.
+                    existing_row = by_id[item.item_id]
+                    if item.place and not existing_row.place:
+                        existing_row.place = item.place
+                    if item.date and not existing_row.date:
+                        existing_row.date = item.date
+                    continue
                 by_id[item.item_id] = item
                 added += 1
             new_count += added

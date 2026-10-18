@@ -59,9 +59,13 @@ def _embed_credit_exif(item: Item) -> bool:
         zeroth[piexif.ImageIFD.Copyright] = (
             f"{item.rights} | credit: {credit_line(item)}"[:250]
             .encode("ascii", "replace"))
-        if item.title:
+        if item.title or item.place or item.date:
+            desc = item.title or "(untitled)"
+            when_where = ", ".join(p for p in (item.place, item.date) if p)
+            if when_where:
+                desc += f" — {when_where}"
             zeroth[piexif.ImageIFD.ImageDescription] = (
-                f"{item.title} ({item.item_id})"[:250].encode("ascii", "replace"))
+                f"{desc} ({item.item_id})"[:250].encode("ascii", "replace"))
         piexif.insert(piexif.dump(exif), path)
         return True
     except ImportError:
@@ -94,6 +98,8 @@ def write_credits(items: List[Item]) -> None:
         for it in sorted(with_masters, key=lambda x: os.path.basename(x.master_path)):
             fh.write(f"{os.path.basename(it.master_path)}\n")
             fh.write(f"  Title:  {it.title or '(untitled)'}\n")
+            fh.write(f"  Date:   {it.date or 'undated'}\n")
+            fh.write(f"  Place:  {it.place or 'not recorded by the archive'}\n")
             fh.write(f"  Credit: {credit_line(it)}\n")
             fh.write(f"  Rights: {it.rights} [{it.rights_tier}]\n")
             fh.write(f"  Source: {it.item_page_url}\n\n")
@@ -101,12 +107,12 @@ def write_credits(items: List[Item]) -> None:
     csv_path = os.path.join(config.MASTER_DIR, "credits.csv")
     with open(csv_path, "w", encoding="utf-8", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["file", "item_id", "title", "creator", "rights_tier",
-                    "credit_line", "rights", "source_page"])
+        w.writerow(["file", "item_id", "title", "date", "place", "creator",
+                    "rights_tier", "credit_line", "rights", "source_page"])
         for it in with_masters:
             w.writerow([os.path.basename(it.master_path), it.item_id, it.title,
-                        it.creator, it.rights_tier, credit_line(it),
-                        it.rights, it.item_page_url])
+                        it.date, it.place, it.creator, it.rights_tier,
+                        credit_line(it), it.rights, it.item_page_url])
 
     log.info("credits written: %s (%d masters, %d with embedded EXIF credits)",
              txt_path, len(with_masters), embedded)

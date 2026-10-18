@@ -201,6 +201,7 @@ class LocFetcher(Fetcher):
             group=group,
             title=_as_text(raw.get("title")),
             date=date_text,
+            place=_as_text(raw.get("location")),
             creator=_as_text(raw.get("contributor")) or _as_text(raw.get("creator")),
             collection=_as_text(raw.get("partof")),
             rights=rights or "unspecified",

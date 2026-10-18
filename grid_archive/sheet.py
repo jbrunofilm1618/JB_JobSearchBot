@@ -72,6 +72,7 @@ def _remote_url(url) -> str:
 def _card_html(item: Item, share: bool = False) -> str:
     title = html.escape(item.title or "(untitled)")
     date = html.escape(item.date or "n.d.")
+    where = f" &middot; {html.escape(item.place)}" if item.place else ""
     creator = html.escape(item.creator or "unknown")
     rights = html.escape(item.rights or "unspecified")
     page = html.escape(item.item_page_url or "#")
@@ -134,7 +135,7 @@ def _card_html(item: Item, share: bool = False) -> str:
       <figcaption>
         <div class="badges">{fmt_badge}{tier_badge}{dur}{score_badge}{note_badge}</div>
         <div class="title"><a href="{page}" target="_blank" rel="noopener">{title}</a></div>
-        <div class="meta">{date} &middot; {creator}</div>
+        <div class="meta">{date}{where} &middot; {creator}</div>
         <div class="rights">{rights}</div>
         {f'<div class="reason">{reason}</div>' if reason else ''}
         <div class="src">{item.source} &middot; {html.escape(item.query or '')}</div>

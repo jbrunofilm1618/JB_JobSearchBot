@@ -42,6 +42,27 @@ def _join(value) -> str:
     return str(value) if value else ""
 
 
+def _spatial(sr: dict) -> str:
+    """sourceResource.spatial: list of dicts ({name, city, county, state, ...})
+    or plain strings, varying by provider. Flatten to readable place names."""
+    spatial = sr.get("spatial")
+    if not spatial:
+        return ""
+    if not isinstance(spatial, list):
+        spatial = [spatial]
+    names: list = []
+    for s in spatial:
+        if isinstance(s, dict):
+            name = s.get("name") or ", ".join(
+                str(s[k]) for k in ("city", "county", "state", "country") if s.get(k))
+        else:
+            name = str(s)
+        name = str(name).strip()
+        if name and name not in names:
+            names.append(name)
+    return "; ".join(names)
+
+
 def _classify(type_value) -> Optional[str]:
     """Map DPLA sourceResource.type to our format. type may be scalar or list."""
     types = type_value if isinstance(type_value, list) else [type_value]
@@ -122,6 +143,7 @@ class DplaFetcher(Fetcher):
             group=group,
             title=_join(sr.get("title")),
             date=str(date_str),
+            place=_spatial(sr),
             creator=_join(sr.get("creator")),
             collection=_join(doc.get("dataProvider")) or _join(doc.get("provider")),
             rights=_join(sr.get("rights")) or "see provider",
