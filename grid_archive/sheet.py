@@ -69,7 +69,7 @@ def _remote_url(url) -> str:
     return u if u.startswith(("http://", "https://", "//")) else ""
 
 
-def _card_html(item: Item, share: bool = False) -> str:
+def _card_html(item: Item, share: bool = False, archived: bool = False) -> str:
     title = html.escape(item.title or "(untitled)")
     date = html.escape(item.date or "n.d.")
     where = f" &middot; {html.escape(item.place)}" if item.place else ""
@@ -85,6 +85,8 @@ def _card_html(item: Item, share: bool = False) -> str:
     reason = html.escape(item.judge_reason or "")
     note = html.escape(item.streaming_note or "")
     note_badge = f'<span class="note">{note}</span>' if note else ""
+    arch_badge = ('<span class="archived" title="already in your Frame.io '
+                  'archive (archive_list.txt)">IN ARCHIVE</span>' if archived else "")
 
     # Media block: filmstrip for films with frames, else single image. In share
     # mode every image must be a REMOTE archive URL — local previews/ frames
@@ -130,10 +132,10 @@ def _card_html(item: Item, share: bool = False) -> str:
     links += "</div>"
 
     return f"""
-    <figure class="card" data-format="{item.format}" data-shortlist="{keep}" data-score="{sort_score}" data-usable="{usable}">
+    <figure class="card" data-format="{item.format}" data-shortlist="{keep}" data-score="{sort_score}" data-usable="{usable}" data-archived="{'1' if archived else '0'}">
       <a href="{page}" target="_blank" rel="noopener">{media}</a>
       <figcaption>
-        <div class="badges">{fmt_badge}{tier_badge}{dur}{score_badge}{note_badge}</div>
+        <div class="badges">{fmt_badge}{tier_badge}{arch_badge}{dur}{score_badge}{note_badge}</div>
         <div class="title"><a href="{page}" target="_blank" rel="noopener">{title}</a></div>
         <div class="meta">{date}{where} &middot; {creator}</div>
         <div class="rights">{rights}</div>
@@ -145,8 +147,12 @@ def _card_html(item: Item, share: bool = False) -> str:
 
 
 def _group_section(group_key: str, label: str, items: List[Item],
-                   share: bool = False) -> str:
-    cards = "\n".join(_card_html(it, share=share) for it in items)
+                   share: bool = False, archive_keys=None) -> str:
+    from .dedupe import in_archive
+    keys = archive_keys or set()
+    cards = "\n".join(
+        _card_html(it, share=share, archived=in_archive(it.item_id, keys))
+        for it in items)
     return f"""
     <section class="group" data-group="{group_key}">
       <h2>{label} <span class="count">{len(items)}</span></h2>
@@ -187,6 +193,8 @@ _CSS = """
   .dur { font-size: 11px; color: #9a9aa3; }
   .score { font-size: 11px; color: #ffd479; }
   .note { font-size: 11px; color: #ff8a8a; }
+  .archived { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px;
+              background: #3d2a4d; color: #cf9aff; }
   .tier { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
   .tier.public_domain { background: #1d3d2a; color: #7fe0a7; }
   .tier.attribution { background: #1d3347; color: #8ec9ff; }
@@ -208,7 +216,7 @@ _CSS = """
 """
 
 _JS = """
-  const state = { fmt: 'all', sort: 'group', shortlistOnly: false, usableOnly: false };
+  const state = { fmt: 'all', sort: 'group', shortlistOnly: false, usableOnly: false, hideArchived: false };
   function apply() {
     document.querySelectorAll('.group').forEach(group => {
       const grid = group.querySelector('.grid');
@@ -218,7 +226,8 @@ _JS = """
         const okFmt = state.fmt === 'all' || c.dataset.format === state.fmt;
         const okShort = !state.shortlistOnly || c.dataset.shortlist === '1';
         const okRights = !state.usableOnly || c.dataset.usable === '1';
-        const show = okFmt && okShort && okRights;
+        const okArch = !state.hideArchived || c.dataset.archived !== '1';
+        const show = okFmt && okShort && okRights && okArch;
         c.style.display = show ? '' : 'none';
         if (show) visible++;
       });
@@ -233,6 +242,8 @@ _JS = """
   document.getElementById('sort').addEventListener('change', e => { state.sort = e.target.value; apply(); });
   document.getElementById('shortlist').addEventListener('change', e => { state.shortlistOnly = e.target.checked; apply(); });
   document.getElementById('usable').addEventListener('change', e => { state.usableOnly = e.target.checked; apply(); });
+  const archBox = document.getElementById('hidearchived');
+  if (archBox) archBox.addEventListener('change', e => { state.hideArchived = e.target.checked; apply(); });
   // Crop-planning chip: tag each card with the image's native orientation
   // (from real pixel dimensions, masters untouched) so portrait/square/
   // landscape crop options can be judged at a glance.
@@ -253,7 +264,9 @@ _JS = """
 """
 
 
-def render_sheet(items: List[Item], share: bool = False) -> str:
+def render_sheet(items: List[Item], share: bool = False,
+                 archive_keys=None) -> str:
+    archive_keys = archive_keys or set()
     by_group: dict = {}
     for it in items:
         by_group.setdefault(it.group, []).append(it)
@@ -267,7 +280,7 @@ def render_sheet(items: List[Item], share: bool = False) -> str:
               sorted(k for k in by_group if k not in known)
     sections = "\n".join(
         _group_section(k, labels.get(k, html.escape(k.replace("_", " ").title())),
-                       by_group[k], share=share)
+                       by_group[k], share=share, archive_keys=archive_keys)
         for k in ordered)
 
     total = len(items)
@@ -300,6 +313,7 @@ def render_sheet(items: List[Item], share: bool = False) -> str:
       </label>
       <label><input type="checkbox" id="shortlist"> shortlist only</label>
       <label><input type="checkbox" id="usable"> usable rights only (PD + CC-BY)</label>
+      {'<label><input type="checkbox" id="hidearchived"> hide already-in-archive</label>' if archive_keys else ''}
     </div>
   </header>
   <main>{sections}</main>
@@ -307,12 +321,14 @@ def render_sheet(items: List[Item], share: bool = False) -> str:
 </body></html>"""
 
 
-def run_sheet(share: bool = False) -> str:
+def run_sheet(share: bool = False, archive_list: str = None) -> str:
     from datetime import datetime
+    from .dedupe import load_archive_keys
 
     items = manifest.load_items()
     if not items:
         log.warning("no manifest found; run `search` first")
+    archive_keys = load_archive_keys(archive_list)
 
     if share:
         # Portable single-file edition: images stream from the archives' own
@@ -320,11 +336,11 @@ def run_sheet(share: bool = False) -> str:
         # anywhere with internet. No local previews needed, no snapshot taken.
         path = os.path.join(config.OUTPUT_DIR, config.SHARE_SHEET_HTML)
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(render_sheet(items, share=True))
+            fh.write(render_sheet(items, share=True, archive_keys=archive_keys))
         log.info("wrote portable share edition: %s (%d items)", path, len(items))
         return path
 
-    html_out = render_sheet(items)
+    html_out = render_sheet(items, archive_keys=archive_keys)
     path = os.path.join(config.OUTPUT_DIR, config.CONTACT_SHEET_HTML)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(html_out)
