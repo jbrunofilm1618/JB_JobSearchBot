@@ -79,7 +79,7 @@ class InternetArchiveFetcher(Fetcher):
                 "rows": config.RESULTS_PER_PAGE,
                 "page": page,
                 "fl[]": ["identifier", "title", "date", "year", "creator",
-                         "licenseurl", "collection", "mediatype"],
+                         "licenseurl", "collection", "mediatype", "coverage"],
             }
             data = cached_json(url, params,
                                lambda p=params: self.client.get_json(url, p),
@@ -125,6 +125,7 @@ class InternetArchiveFetcher(Fetcher):
             group=group,
             title=_as_text(doc.get("title")),
             date=_as_text(doc.get("date")) or _as_text(doc.get("year")),
+            place=_as_text(doc.get("coverage")),
             creator=_as_text(doc.get("creator")),
             collection=_as_text(doc.get("collection")),
             rights=_as_text(doc.get("licenseurl")) or "unspecified",

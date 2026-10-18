@@ -49,6 +49,7 @@ LOC_PAGE = {
             "url": "https://www.loc.gov/item/2017878331/",
             "title": "Stringing power line, REA project",
             "date": "1940",
+            "location": ["united states", "ohio"],
             "contributor": ["lee, russell"],
             "partof": ["farm security administration"],
             "image_url": ["//img/s.jpg", "//img/m.jpg", "//img/l.jpg"],
@@ -73,6 +74,7 @@ def test_loc_parses_and_skips_non_digitized():
     assert it.item_id == "loc:2017878331"
     assert it.source == "LOC" and it.format == "photo" and it.group == "rural"
     assert it.creator == "lee, russell"
+    assert it.place == "united states; ohio"
     assert it.best_download_url == "//img/m.jpg"   # medium, not the largest
     assert it.thumbnail_url == "//img/s.jpg"
     assert it.master_url == "//img/l.jpg"
@@ -344,6 +346,8 @@ DPLA_PAGE = {
             "title": "TVA switchyard",
             "date": {"displayDate": "1942", "begin": "1942"},
             "creator": "Tennessee Valley Authority",
+            "spatial": [{"name": "Knoxville, TN", "state": "Tennessee"},
+                        "Tennessee Valley"],
             "type": "moving image",
             "rights": "No known copyright restrictions",
         },
@@ -361,6 +365,7 @@ def test_dpla_parses_film_lead():
     it = items[0]
     assert it.item_id == "dpla:abc123" and it.source == "DPLA" and it.format == "film"
     assert it.date == "1942" and it.creator == "Tennessee Valley Authority"
+    assert it.place == "Knoxville, TN; Tennessee Valley"
     assert it.rights.startswith("No known copyright")
     assert it.item_page_url == "https://provider.org/item/abc123"
     assert it.master_url == ""                                # DPLA has no direct master
@@ -389,6 +394,7 @@ def _nara_page(source_key="_source", gtypes=None, year="1940-01-01"):
             "title": "Stringing REA line",
             "generalRecordsTypes": gtypes if gtypes is not None else ["Moving Images"],
             "productionDates": [{"logicalDate": year}],
+            "geographicReferences": [{"heading": "Ohio (State)"}],
             "useRestriction": {"status": "Unrestricted"},
             "digitalObjects": [
                 {"objectType": "Video (MP4)",
@@ -411,6 +417,7 @@ def test_nara_parses_film_and_finds_master():
     assert it.master_url.endswith("/clip.mp4")
     assert it.thumbnail_url.endswith("/thumb.jpg")
     assert it.date == "1940" and "Unrestricted" in it.rights
+    assert it.place == "Ohio (State)"
     assert it.item_page_url == "https://catalog.archives.gov/id/12345"
     assert f.resolve_stream(it) == it.master_url
 

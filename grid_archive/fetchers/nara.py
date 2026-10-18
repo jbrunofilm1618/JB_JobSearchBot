@@ -89,6 +89,25 @@ def _extract_year(value) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+def _place(record: dict) -> str:
+    """geographicReferences: list of {heading: "Ohio (State)"} dicts (or strings
+    in some deployments). Flatten defensively, like everything NARA."""
+    refs = record.get("geographicReferences") or []
+    if isinstance(refs, dict):
+        refs = [refs]
+    if not isinstance(refs, list):
+        return ""
+    names: List[str] = []
+    for r in refs:
+        if isinstance(r, dict):
+            name = str(r.get("heading") or r.get("name") or "").strip()
+        else:
+            name = str(r).strip()
+        if name and name not in names:
+            names.append(name)
+    return "; ".join(names)
+
+
 def _classify(record: dict, objects: List[dict]) -> Optional[str]:
     """photo | film | None, from generalRecordsTypes then object extensions."""
     types = record.get("generalRecordsTypes") or record.get("objectType") or []
@@ -205,6 +224,7 @@ class NaraFetcher(Fetcher):
             group=group,
             title=str(record.get("title") or record.get("naId") or "").strip(),
             date=str(year) if year else "",
+            place=_place(record),
             creator=_creator(record),
             collection=str(record.get("recordGroupNumber") or "National Archives"),
             rights=rights,

@@ -16,6 +16,7 @@ MANIFEST_COLUMNS = [
     "group",            # rural | urban | big_machine
     "title",
     "date",
+    "place",            # where it was taken (as the source archive records it)
     "creator",          # creator / photographer
     "collection",
     "rights",           # LOC rights statement, or IA licenseurl
@@ -43,6 +44,7 @@ class Item:
     group: str                         # "rural" | "urban" | "big_machine"
     title: str = ""
     date: str = ""
+    place: str = ""
     creator: str = ""
     collection: str = ""
     rights: str = ""
