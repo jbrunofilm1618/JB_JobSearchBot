@@ -63,9 +63,17 @@ def _embed_credit_exif(item: Item) -> bool:
             desc = item.title or "(untitled)"
             when_where = ", ".join(p for p in (item.place, item.date) if p)
             if when_where:
-                desc += f" — {when_where}"
+                # Plain hyphen: EXIF text is ASCII, an em dash would render "?"
+                desc += f" - {when_where}"
             zeroth[piexif.ImageIFD.ImageDescription] = (
                 f"{desc} ({item.item_id})"[:250].encode("ascii", "replace"))
+        # Capture year into DateTimeOriginal so Frame.io / Lightroom / Photos
+        # sort by when the photo was SHOT, not when it was downloaded.
+        import re
+        year = re.search(r"(1[89]\d\d|20\d\d)", item.date or "")
+        if year:
+            exif.setdefault("Exif", {})[piexif.ExifIFD.DateTimeOriginal] = (
+                f"{year.group(1)}:01:01 00:00:00".encode("ascii"))
         piexif.insert(piexif.dump(exif), path)
         return True
     except ImportError:
@@ -78,10 +86,11 @@ def _embed_credit_exif(item: Item) -> bool:
 
 
 def write_credits(items: List[Item]) -> None:
-    """Write CREDITS.txt and credits.csv into masters/ covering every item that
-    has a downloaded master, and embed credits into JPEG EXIF. Run after every
-    fetch so the folder is always self-documenting — the files travel with the
-    photos to Downloads, a designer, or a drive."""
+    """Write CREDITS.txt and credits.csv into EACH folder that holds downloaded
+    masters (batch folders are per pull date), covering exactly that folder's
+    files, and embed credits into JPEG EXIF. Run after every fetch so every
+    folder is self-documenting — upload one batch folder to Frame.io or hand it
+    to a designer and its paperwork goes with it."""
     import csv
 
     with_masters = [it for it in items
@@ -91,31 +100,36 @@ def write_credits(items: List[Item]) -> None:
 
     embedded = sum(1 for it in with_masters if _embed_credit_exif(it))
 
-    txt_path = os.path.join(config.MASTER_DIR, "CREDITS.txt")
-    with open(txt_path, "w", encoding="utf-8") as fh:
-        fh.write("PHOTO CREDITS & RIGHTS — travels with these files\n")
-        fh.write("=" * 60 + "\n\n")
-        for it in sorted(with_masters, key=lambda x: os.path.basename(x.master_path)):
-            fh.write(f"{os.path.basename(it.master_path)}\n")
-            fh.write(f"  Title:  {it.title or '(untitled)'}\n")
-            fh.write(f"  Date:   {it.date or 'undated'}\n")
-            fh.write(f"  Place:  {it.place or 'not recorded by the archive'}\n")
-            fh.write(f"  Credit: {credit_line(it)}\n")
-            fh.write(f"  Rights: {it.rights} [{it.rights_tier}]\n")
-            fh.write(f"  Source: {it.item_page_url}\n\n")
+    by_dir: Dict[str, List[Item]] = {}
+    for it in with_masters:
+        by_dir.setdefault(os.path.dirname(it.master_path), []).append(it)
 
-    csv_path = os.path.join(config.MASTER_DIR, "credits.csv")
-    with open(csv_path, "w", encoding="utf-8", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(["file", "item_id", "title", "date", "place", "creator",
-                    "rights_tier", "credit_line", "rights", "source_page"])
-        for it in with_masters:
-            w.writerow([os.path.basename(it.master_path), it.item_id, it.title,
-                        it.date, it.place, it.creator, it.rights_tier,
-                        credit_line(it), it.rights, it.item_page_url])
+    for folder, group in by_dir.items():
+        txt_path = os.path.join(folder, "CREDITS.txt")
+        with open(txt_path, "w", encoding="utf-8") as fh:
+            fh.write("PHOTO CREDITS & RIGHTS — travels with these files\n")
+            fh.write("=" * 60 + "\n\n")
+            for it in sorted(group, key=lambda x: os.path.basename(x.master_path)):
+                fh.write(f"{os.path.basename(it.master_path)}\n")
+                fh.write(f"  Title:  {it.title or '(untitled)'}\n")
+                fh.write(f"  Date:   {it.date or 'undated'}\n")
+                fh.write(f"  Place:  {it.place or 'not recorded by the archive'}\n")
+                fh.write(f"  Credit: {credit_line(it)}\n")
+                fh.write(f"  Rights: {it.rights} [{it.rights_tier}]\n")
+                fh.write(f"  Source: {it.item_page_url}\n\n")
 
-    log.info("credits written: %s (%d masters, %d with embedded EXIF credits)",
-             txt_path, len(with_masters), embedded)
+        csv_path = os.path.join(folder, "credits.csv")
+        with open(csv_path, "w", encoding="utf-8", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["file", "item_id", "title", "date", "place", "creator",
+                        "rights_tier", "credit_line", "rights", "source_page"])
+            for it in group:
+                w.writerow([os.path.basename(it.master_path), it.item_id, it.title,
+                            it.date, it.place, it.creator, it.rights_tier,
+                            credit_line(it), it.rights, it.item_page_url])
+
+    log.info("credits written in %d folder(s) (%d masters, %d with embedded "
+             "EXIF credits)", len(by_dir), len(with_masters), embedded)
 
 
 def _selected_ids(ids: Optional[List[str]], ids_file: Optional[str],
@@ -136,9 +150,17 @@ def run_fetch_masters(ids: Optional[List[str]] = None,
                       ids_file: Optional[str] = None,
                       use_cache: bool = True,
                       force: bool = False,
-                      archive_list: Optional[str] = None) -> List[Item]:
+                      archive_list: Optional[str] = None,
+                      batch: Optional[str] = None) -> List[Item]:
+    from datetime import datetime
     from .dedupe import load_archive_keys, in_archive
     archive_keys = load_archive_keys(archive_list)
+    # Each pull lands in a dated batch folder (masters/2026-10-17/ by default;
+    # --batch names it explicitly). Items fetched in earlier batches keep their
+    # recorded master_path, so a rerun never re-downloads them into today's
+    # folder — the batch folder only gains what is actually new.
+    batch = batch or datetime.now().strftime("%Y-%m-%d")
+    dest_dir = os.path.join(config.MASTER_DIR, batch)
     items = manifest.load_items()
     if not items:
         log.warning("no manifest found; run `search` first")
@@ -152,7 +174,8 @@ def run_fetch_masters(ids: Optional[List[str]] = None,
 
     client = HttpClient()
     fetchers: Dict[str, Fetcher] = fetcher_map(client, use_cache)
-    os.makedirs(config.MASTER_DIR, exist_ok=True)
+    os.makedirs(dest_dir, exist_ok=True)
+    log.info("this pull's batch folder: %s", dest_dir)
 
     for item_id in wanted:
         item = index.get(item_id)
@@ -189,7 +212,7 @@ def run_fetch_masters(ids: Optional[List[str]] = None,
             continue
 
         ext = os.path.splitext(item.master_url.split("?")[0])[1] or ".bin"
-        dest = os.path.join(config.MASTER_DIR, safe_filename(item.item_id, ext))
+        dest = os.path.join(dest_dir, safe_filename(item.item_id, ext))
         if os.path.exists(dest):
             item.master_path = dest
             continue
