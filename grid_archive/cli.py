@@ -101,6 +101,17 @@ def build_parser() -> argparse.ArgumentParser:
                          "with the same name resumes into the same folder; "
                          "already-downloaded items are never re-pulled.")
 
+    dv = sub.add_parser("make-delivery",
+                        help="convert a batch's masters to shareable JPEGs with "
+                             "credits embedded in every file's EXIF")
+    dv.add_argument("--batch",
+                    help="batch folder under masters/ (default: the most recent)")
+    dv.add_argument("--quality", type=int, default=90,
+                    help="JPEG quality 1-95 (default 90)")
+    dv.add_argument("--max-px", type=int,
+                    help="cap the long edge at this many pixels "
+                         "(default: keep full resolution)")
+
     rn = sub.add_parser("run", help="search -> preview -> sheet")
     rn.add_argument("--max-clip-mb", type=int, default=config.MAX_CLIP_MB)
     rn.add_argument("--sources", help=sources_help)
@@ -165,6 +176,10 @@ def main(argv=None) -> int:
         run_fetch_masters(ids=args.ids, ids_file=args.ids_file,
                           use_cache=use_cache, force=args.force,
                           archive_list=args.archive_list, batch=args.batch)
+    elif args.command == "make-delivery":
+        from .delivery import run_make_delivery
+        run_make_delivery(batch=args.batch, quality=args.quality,
+                          max_px=args.max_px)
     elif args.command == "run":
         from .search import run_search
         from .preview import run_preview

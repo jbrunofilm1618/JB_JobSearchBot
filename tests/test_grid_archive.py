@@ -825,6 +825,59 @@ def test_build_fetchers_respects_dpla_key_presence():
         os.environ.pop(config.DPLA_API_KEY_ENV, None)
 
 
+# --------------------------------------------------------------------------- #
+# Delivery
+# --------------------------------------------------------------------------- #
+
+def test_make_delivery_converts_embeds_and_documents():
+    try:
+        from PIL import Image
+        import piexif
+    except ImportError:
+        print("  (Pillow/piexif not installed — delivery test skipped)")
+        return
+    from grid_archive.delivery import run_make_delivery
+    from grid_archive import manifest as mf
+
+    with tempfile.TemporaryDirectory() as d:
+        old_out, old_master = config.OUTPUT_DIR, config.MASTER_DIR
+        config.OUTPUT_DIR, config.MASTER_DIR = d, os.path.join(d, "masters")
+        try:
+            batch = os.path.join(config.MASTER_DIR, "2026-10-17")
+            os.makedirs(batch)
+            tif = os.path.join(batch, "loc_1.tif")
+            Image.new("RGB", (64, 48), (90, 80, 70)).save(tif, "TIFF")
+            items = [Item(item_id="loc:1", source="LOC", format="photo",
+                          group="powerlines", title="Stringing wire",
+                          date="1940", place="Ohio", creator="Russell Lee",
+                          rights="No known restrictions",
+                          rights_tier="public_domain", master_path=tif),
+                     Item(item_id="loc:2", source="LOC", format="photo",
+                          group="powerlines")]  # no master -> ignored
+            mf.save_items(items)
+
+            out = run_make_delivery(max_px=50)
+            assert out == os.path.join(batch, "delivery")
+            jpg = os.path.join(out, "loc_1.jpg")
+            assert os.path.exists(jpg)
+            with Image.open(jpg) as img:
+                assert img.format == "JPEG" and max(img.size) <= 50
+            exif = piexif.load(jpg)
+            assert exif["0th"][piexif.ImageIFD.Artist].decode() == "Russell Lee"
+            assert b"Ohio" in exif["0th"][piexif.ImageIFD.ImageDescription]
+            assert exif["Exif"][piexif.ExifIFD.DateTimeOriginal].startswith(b"1940")
+            credits_txt = open(os.path.join(out, "CREDITS.txt")).read()
+            assert "loc_1.jpg" in credits_txt and "Place:  Ohio" in credits_txt
+            assert os.path.exists(os.path.join(out, "credits.csv"))
+
+            # Rerun keeps the existing JPEG and still covers it in credits.
+            before = os.path.getmtime(jpg)
+            run_make_delivery()
+            assert os.path.getmtime(jpg) == before
+        finally:
+            config.OUTPUT_DIR, config.MASTER_DIR = old_out, old_master
+
+
 if __name__ == "__main__":
     import traceback
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
