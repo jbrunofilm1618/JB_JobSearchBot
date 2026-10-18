@@ -38,12 +38,13 @@ def credit_line(item: Item) -> str:
     return f"VERIFY rights before use ({creator})"
 
 
-def _embed_credit_exif(item: Item) -> bool:
-    """Losslessly embed creator/credit/title into a JPEG master's EXIF, so the
-    credit travels inside the file itself. No re-encode — piexif inserts the
-    APP1 block in place. Non-JPEG masters (TIFF, video) are skipped; the
+def _embed_credit_exif(item: Item, path: Optional[str] = None) -> bool:
+    """Losslessly embed creator/credit/title into a JPEG's EXIF, so the credit
+    travels inside the file itself. No re-encode — piexif inserts the APP1
+    block in place. Defaults to the item's master; `path` targets another copy
+    of the same shot (a delivery JPEG). Non-JPEG files are skipped; the
     sidecar CREDITS files cover them."""
-    path = item.master_path
+    path = path or item.master_path
     if not path or not os.path.exists(path) or not path.lower().endswith((".jpg", ".jpeg")):
         return False
     try:
@@ -105,31 +106,40 @@ def write_credits(items: List[Item]) -> None:
         by_dir.setdefault(os.path.dirname(it.master_path), []).append(it)
 
     for folder, group in by_dir.items():
-        txt_path = os.path.join(folder, "CREDITS.txt")
-        with open(txt_path, "w", encoding="utf-8") as fh:
-            fh.write("PHOTO CREDITS & RIGHTS — travels with these files\n")
-            fh.write("=" * 60 + "\n\n")
-            for it in sorted(group, key=lambda x: os.path.basename(x.master_path)):
-                fh.write(f"{os.path.basename(it.master_path)}\n")
-                fh.write(f"  Title:  {it.title or '(untitled)'}\n")
-                fh.write(f"  Date:   {it.date or 'undated'}\n")
-                fh.write(f"  Place:  {it.place or 'not recorded by the archive'}\n")
-                fh.write(f"  Credit: {credit_line(it)}\n")
-                fh.write(f"  Rights: {it.rights} [{it.rights_tier}]\n")
-                fh.write(f"  Source: {it.item_page_url}\n\n")
-
-        csv_path = os.path.join(folder, "credits.csv")
-        with open(csv_path, "w", encoding="utf-8", newline="") as fh:
-            w = csv.writer(fh)
-            w.writerow(["file", "item_id", "title", "date", "place", "creator",
-                        "rights_tier", "credit_line", "rights", "source_page"])
-            for it in group:
-                w.writerow([os.path.basename(it.master_path), it.item_id, it.title,
-                            it.date, it.place, it.creator, it.rights_tier,
-                            credit_line(it), it.rights, it.item_page_url])
+        write_credit_files(folder,
+                           [(os.path.basename(it.master_path), it) for it in group])
 
     log.info("credits written in %d folder(s) (%d masters, %d with embedded "
              "EXIF credits)", len(by_dir), len(with_masters), embedded)
+
+
+def write_credit_files(folder: str, pairs) -> None:
+    """CREDITS.txt + credits.csv in `folder` covering (filename, item) pairs.
+    Shared by the masters flow and make-delivery, whose filenames differ."""
+    import csv
+
+    txt_path = os.path.join(folder, "CREDITS.txt")
+    with open(txt_path, "w", encoding="utf-8") as fh:
+        fh.write("PHOTO CREDITS & RIGHTS — travels with these files\n")
+        fh.write("=" * 60 + "\n\n")
+        for name, it in sorted(pairs, key=lambda p: p[0]):
+            fh.write(f"{name}\n")
+            fh.write(f"  Title:  {it.title or '(untitled)'}\n")
+            fh.write(f"  Date:   {it.date or 'undated'}\n")
+            fh.write(f"  Place:  {it.place or 'not recorded by the archive'}\n")
+            fh.write(f"  Credit: {credit_line(it)}\n")
+            fh.write(f"  Rights: {it.rights} [{it.rights_tier}]\n")
+            fh.write(f"  Source: {it.item_page_url}\n\n")
+
+    csv_path = os.path.join(folder, "credits.csv")
+    with open(csv_path, "w", encoding="utf-8", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["file", "item_id", "title", "date", "place", "creator",
+                    "rights_tier", "credit_line", "rights", "source_page"])
+        for name, it in pairs:
+            w.writerow([name, it.item_id, it.title,
+                        it.date, it.place, it.creator, it.rights_tier,
+                        credit_line(it), it.rights, it.item_page_url])
 
 
 def _selected_ids(ids: Optional[List[str]], ids_file: Optional[str],
