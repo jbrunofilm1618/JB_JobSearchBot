@@ -135,7 +135,10 @@ def _selected_ids(ids: Optional[List[str]], ids_file: Optional[str],
 def run_fetch_masters(ids: Optional[List[str]] = None,
                       ids_file: Optional[str] = None,
                       use_cache: bool = True,
-                      force: bool = False) -> List[Item]:
+                      force: bool = False,
+                      archive_list: Optional[str] = None) -> List[Item]:
+    from .dedupe import load_archive_keys, in_archive
+    archive_keys = load_archive_keys(archive_list)
     items = manifest.load_items()
     if not items:
         log.warning("no manifest found; run `search` first")
@@ -155,6 +158,13 @@ def run_fetch_masters(ids: Optional[List[str]] = None,
         item = index.get(item_id)
         if item is None:
             log.warning("id not in manifest: %s", item_id)
+            continue
+        # Archive dedupe: this shot is already in the team archive (Frame.io
+        # et al.) per archive_list.txt — don't pull a duplicate. Remove its
+        # line from the list to pull it anyway.
+        if in_archive(item_id, archive_keys):
+            log.info("already in archive, skipping %s (delete its line from "
+                     "the archive list to re-pull)", item_id)
             continue
         # Rights gate: never pull masters for NC/ND/SA/in-copyright items —
         # this is commercial use. --force overrides for a shot you intend to

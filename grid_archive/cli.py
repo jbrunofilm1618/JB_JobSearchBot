@@ -72,10 +72,17 @@ def build_parser() -> argparse.ArgumentParser:
                     help=f"skip MP4 derivatives larger than this (default {config.MAX_CLIP_MB})")
     pv.add_argument("--sources", help=sources_help)
 
+    archive_help = ("text file listing what's already in your archive (Frame.io "
+                    "asset names, old masters filenames, or item ids — one per "
+                    "line). Default: archive_list.txt in the project folder, "
+                    "if present. Matching items get an IN ARCHIVE badge on the "
+                    "sheet and are skipped by fetch-masters.")
+
     sh = sub.add_parser("sheet", help="render contact_sheet.html from the manifest")
     sh.add_argument("--share", action="store_true",
                     help="also write contact_sheet_share.html — a portable single "
                          "file with remote images, safe to email or upload")
+    sh.add_argument("--archive-list", help=archive_help)
 
     jd = sub.add_parser("judge", help="score items against the brief via Claude")
     jd.add_argument("--rejudge", action="store_true",
@@ -87,6 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     fm.add_argument("--ids-file", help="file with one item id per line")
     fm.add_argument("--force", action="store_true",
                     help="also pull rights-gated items (only if you hold a direct license)")
+    fm.add_argument("--archive-list", help=archive_help)
 
     rn = sub.add_parser("run", help="search -> preview -> sheet")
     rn.add_argument("--max-clip-mb", type=int, default=config.MAX_CLIP_MB)
@@ -141,16 +149,17 @@ def main(argv=None) -> int:
         run_preview(args.max_clip_mb, use_cache=use_cache, sources=sources)
     elif args.command == "sheet":
         from .sheet import run_sheet
-        run_sheet()
+        run_sheet(archive_list=args.archive_list)
         if args.share:
-            run_sheet(share=True)
+            run_sheet(share=True, archive_list=args.archive_list)
     elif args.command == "judge":
         from .judge import run_judge
         run_judge(rejudge=args.rejudge)
     elif args.command == "fetch-masters":
         from .masters import run_fetch_masters
         run_fetch_masters(ids=args.ids, ids_file=args.ids_file,
-                          use_cache=use_cache, force=args.force)
+                          use_cache=use_cache, force=args.force,
+                          archive_list=args.archive_list)
     elif args.command == "run":
         from .search import run_search
         from .preview import run_preview
