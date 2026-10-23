@@ -878,6 +878,46 @@ def test_make_delivery_converts_embeds_and_documents():
             config.OUTPUT_DIR, config.MASTER_DIR = old_out, old_master
 
 
+def test_credits_report_matches_across_buckets_and_lists_unmatched():
+    import json
+    from grid_archive.credits_report import run_credits_report
+
+    with tempfile.TemporaryDirectory() as d:
+        b1, b2 = os.path.join(d, "nyquis-rea"), os.path.join(d, "grid-project-2")
+        os.makedirs(b1); os.makedirs(b2)
+        it1 = Item(item_id="loc:2017878331", source="LOC", format="photo",
+                   group="powerlines", title="Stringing wire", date="1940",
+                   place="Ohio", creator="Russell Lee",
+                   rights="No known restrictions", rights_tier="public_domain",
+                   item_page_url="https://loc.gov/item/2017878331/")
+        it2 = Item(item_id="ia:PowerAndTheLand", source="IA", format="film",
+                   group="rural", title="Power and the Land",
+                   rights="https://creativecommons.org/licenses/by/4.0/",
+                   rights_tier="attribution", creator="Joris Ivens",
+                   item_page_url="https://archive.org/details/PowerAndTheLand")
+        for folder, items in ((b1, [it1]), (b2, [it1, it2])):
+            with open(os.path.join(folder, "manifest.json"), "w") as fh:
+                json.dump([it.to_dict() for it in items], fh)
+
+        names = os.path.join(d, "frameio.txt")
+        with open(names, "w") as fh:
+            fh.write("# website folder\nloc_2017878331.jpg\n"
+                     "LOC_2017878331.tif\n"          # duplicate -> collapsed
+                     "ia_PowerAndTheLand.mp4\nmystery_shot.jpg\n")
+
+        out = os.path.join(d, "report")
+        csv_path, txt_path = run_credits_report(names, [b1, b2], out=out)
+
+        rows = open(csv_path).read().splitlines()
+        assert len(rows) == 3  # header + 2 matched (duplicate collapsed)
+        assert "nyquis-rea" in rows[1]        # first bucket wins for it1
+        assert "grid-project-2" in rows[2]
+        txt = open(txt_path).read()
+        assert "Place:   Ohio" in txt and "Russell Lee" in txt
+        assert 'CC BY' in txt                  # credit line for the IA film
+        assert "UNMATCHED" in txt and "mystery_shot.jpg" in txt
+
+
 if __name__ == "__main__":
     import traceback
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]

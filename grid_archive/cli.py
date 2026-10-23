@@ -112,6 +112,19 @@ def build_parser() -> argparse.ArgumentParser:
                     help="cap the long edge at this many pixels "
                          "(default: keep full resolution)")
 
+    cr = sub.add_parser("credits-report",
+                        help="metadata + licensing report for a list of photo "
+                             "filenames, matched back to scrape manifests")
+    cr.add_argument("--names-file", required=True,
+                    help="text file of filenames (e.g. a Frame.io folder "
+                         "listing), one per line")
+    cr.add_argument("--buckets", nargs="+", default=["."],
+                    help="scrape bucket folders holding manifest.json "
+                         "(default: current folder). First match wins.")
+    cr.add_argument("--out", default="website_credits",
+                    help="output prefix: <out>.csv + <out>.txt "
+                         "(default website_credits)")
+
     rn = sub.add_parser("run", help="search -> preview -> sheet")
     rn.add_argument("--max-clip-mb", type=int, default=config.MAX_CLIP_MB)
     rn.add_argument("--sources", help=sources_help)
@@ -176,6 +189,10 @@ def main(argv=None) -> int:
         run_fetch_masters(ids=args.ids, ids_file=args.ids_file,
                           use_cache=use_cache, force=args.force,
                           archive_list=args.archive_list, batch=args.batch)
+    elif args.command == "credits-report":
+        from .credits_report import run_credits_report
+        run_credits_report(names_file=args.names_file, buckets=args.buckets,
+                           out=args.out)
     elif args.command == "make-delivery":
         from .delivery import run_make_delivery
         run_make_delivery(batch=args.batch, quality=args.quality,
